@@ -32,6 +32,18 @@ main
 .env.production.local
 !.env.example
 
+# Keys, Certificates & Credentials
+*.pem
+*.key
+*.cert
+*.crt
+*.cer
+*.pfx
+*.p12
+
+# Vercel
+.vercel/
+
 # Docker & Database Local Volumes
 mongo_data/
 redis_data/
