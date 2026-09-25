@@ -47,7 +47,11 @@ func view(p *models.Poll, base string) gin.H {
 	for i, o := range p.Options {
 		opts[i] = gin.H{"id": o.ID, "text": o.Text}
 	}
-	return gin.H{"id": p.ID.Hex(), "question": p.Question, "options": opts, "status": p.Status, "expiresAt": p.ExpiresAt, "createdAt": p.CreatedAt, "shareUrl": strings.TrimRight(base, "/") + "/poll/" + p.ID.Hex()}
+	primaryBase := strings.TrimSpace(strings.Split(base, ",")[0])
+	if primaryBase == "*" || primaryBase == "" {
+		primaryBase = "https://polling.naveenselvan.me"
+	}
+	return gin.H{"id": p.ID.Hex(), "question": p.Question, "options": opts, "status": p.Status, "expiresAt": p.ExpiresAt, "createdAt": p.CreatedAt, "shareUrl": strings.TrimRight(primaryBase, "/") + "/poll/" + p.ID.Hex()}
 }
 func (h Handler) Create(c *gin.Context) {
 	uid, ok := userID(c)
@@ -125,6 +129,9 @@ func (h Handler) Get(c *gin.Context) {
 		return
 	}
 	token, _ := c.Cookie(h.VoterCookie)
+	if token == "" {
+		token = c.GetHeader("X-Voter-Token")
+	}
 	has := false
 	if token != "" {
 		has, err = h.VoteService.HasVoted(c, p.ID.Hex(), token)

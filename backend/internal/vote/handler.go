@@ -62,9 +62,17 @@ func (h Handler) Vote(c *gin.Context) {
 	}
 	token, err := c.Cookie(h.VoterCookie)
 	if err != nil || token == "" {
-		token = auth.NewVoterToken()
-		http.SetCookie(c.Writer, &http.Cookie{Name: h.VoterCookie, Value: token, MaxAge: 31536000, HttpOnly: true, Secure: h.Secure, SameSite: http.SameSiteLaxMode, Path: "/"})
+		token = c.GetHeader("X-Voter-Token")
 	}
+	if token == "" {
+		token = auth.NewVoterToken()
+		sameSite := http.SameSiteLaxMode
+		if h.Secure {
+			sameSite = http.SameSiteNoneMode
+		}
+		http.SetCookie(c.Writer, &http.Cookie{Name: h.VoterCookie, Value: token, MaxAge: 31536000, HttpOnly: true, Secure: h.Secure, SameSite: sameSite, Path: "/"})
+	}
+	c.Header("X-Voter-Token", token)
 	accepted, counts, err := h.Service.RegisterVote(c, p.ID.Hex(), token, in.OptionID)
 	if err != nil {
 		response.Error(c, 503, "dependency_unavailable", "voting is temporarily unavailable")

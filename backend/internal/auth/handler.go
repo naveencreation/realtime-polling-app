@@ -66,7 +66,16 @@ func (h Handler) Signup(c *gin.Context) {
 		}
 		return
 	}
-	response.JSON(c, 201, gin.H{"id": u.ID.Hex(), "username": u.Username})
+	token, _ := h.Service.GenerateToken(u.ID.Hex(), u.Username)
+	sameSite := http.SameSiteLaxMode
+	if h.Secure {
+		sameSite = http.SameSiteNoneMode
+	}
+	if token != "" {
+		maxAge := int(h.Service.Expiry.Seconds())
+		http.SetCookie(c.Writer, &http.Cookie{Name: h.AuthCookie, Value: token, MaxAge: maxAge, HttpOnly: true, Secure: h.Secure, SameSite: sameSite, Path: "/"})
+	}
+	response.JSON(c, 201, gin.H{"id": u.ID.Hex(), "username": u.Username, "token": token})
 }
 func (h Handler) Login(c *gin.Context) {
 	var in credentials
@@ -85,11 +94,19 @@ func (h Handler) Login(c *gin.Context) {
 		return
 	}
 	maxAge := int(h.Service.Expiry.Seconds())
-	http.SetCookie(c.Writer, &http.Cookie{Name: h.AuthCookie, Value: token, MaxAge: maxAge, HttpOnly: true, Secure: h.Secure, SameSite: http.SameSiteLaxMode, Path: "/"})
-	response.JSON(c, 200, gin.H{"id": u.ID.Hex(), "username": u.Username})
+	sameSite := http.SameSiteLaxMode
+	if h.Secure {
+		sameSite = http.SameSiteNoneMode
+	}
+	http.SetCookie(c.Writer, &http.Cookie{Name: h.AuthCookie, Value: token, MaxAge: maxAge, HttpOnly: true, Secure: h.Secure, SameSite: sameSite, Path: "/"})
+	response.JSON(c, 200, gin.H{"id": u.ID.Hex(), "username": u.Username, "token": token})
 }
 func (h Handler) Logout(c *gin.Context) {
-	http.SetCookie(c.Writer, &http.Cookie{Name: h.AuthCookie, MaxAge: -1, Expires: time.Unix(1, 0), HttpOnly: true, Secure: h.Secure, SameSite: http.SameSiteLaxMode, Path: "/"})
+	sameSite := http.SameSiteLaxMode
+	if h.Secure {
+		sameSite = http.SameSiteNoneMode
+	}
+	http.SetCookie(c.Writer, &http.Cookie{Name: h.AuthCookie, MaxAge: -1, Expires: time.Unix(1, 0), HttpOnly: true, Secure: h.Secure, SameSite: sameSite, Path: "/"})
 	c.Status(200)
 }
 func NewVoterToken() string { return uuid.NewString() }

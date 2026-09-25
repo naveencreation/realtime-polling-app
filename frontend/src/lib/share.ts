@@ -1,6 +1,8 @@
 export function publicPollUrl(shareUrl: string, pollId: string) {
-  if (shareUrl) return shareUrl
-  return `${window.location.origin}/poll/${pollId}`
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    return `${window.location.origin}/poll/${pollId}`
+  }
+  return shareUrl || `/poll/${pollId}`
 }
 
 export async function copyText(value: string) {

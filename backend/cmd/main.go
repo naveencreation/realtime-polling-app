@@ -61,19 +61,28 @@ func run(logger *slog.Logger) error {
 	corsConfig := cors.Config{
 		AllowCredentials: true,
 		AllowMethods:     []string{"GET", "POST", "PATCH", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Voter-Token"},
+		ExposeHeaders:    []string{"Content-Length", "Set-Cookie", "X-Voter-Token"},
 	}
 	if cfg.FrontendBaseURL == "*" || cfg.FrontendBaseURL == "" {
 		corsConfig.AllowOriginFunc = func(origin string) bool { return true }
 	} else {
 		rawOrigins := strings.Split(cfg.FrontendBaseURL, ",")
-		origins := make([]string, 0, len(rawOrigins))
+		originSet := make(map[string]bool)
 		for _, o := range rawOrigins {
 			if trimmed := strings.TrimSpace(o); trimmed != "" {
-				origins = append(origins, trimmed)
+				originSet[trimmed] = true
 			}
 		}
-		corsConfig.AllowOrigins = origins
+		corsConfig.AllowOriginFunc = func(origin string) bool {
+			if originSet[origin] {
+				return true
+			}
+			if strings.HasSuffix(origin, ".vercel.app") || strings.HasSuffix(origin, ".naveenselvan.me") || strings.Contains(origin, "localhost") {
+				return true
+			}
+			return false
+		}
 	}
 	router.Use(cors.New(corsConfig))
 	router.GET("/healthz", func(c *gin.Context) { c.Status(http.StatusOK) })
