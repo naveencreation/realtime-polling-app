@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"strings"
 	"time"
 
 	"github.com/gin-contrib/cors"
@@ -57,7 +58,24 @@ func run(logger *slog.Logger) error {
 	streamHandler := realtime.Handler{Polls: pollRepo, Redis: redisClient}
 	router := gin.New()
 	router.Use(middleware.Recovery(logger), gin.Logger())
-	router.Use(cors.New(cors.Config{AllowOrigins: []string{cfg.FrontendBaseURL}, AllowCredentials: true, AllowMethods: []string{"GET", "POST", "PATCH", "OPTIONS"}, AllowHeaders: []string{"Origin", "Content-Type"}}))
+	corsConfig := cors.Config{
+		AllowCredentials: true,
+		AllowMethods:     []string{"GET", "POST", "PATCH", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
+	}
+	if cfg.FrontendBaseURL == "*" || cfg.FrontendBaseURL == "" {
+		corsConfig.AllowOriginFunc = func(origin string) bool { return true }
+	} else {
+		rawOrigins := strings.Split(cfg.FrontendBaseURL, ",")
+		origins := make([]string, 0, len(rawOrigins))
+		for _, o := range rawOrigins {
+			if trimmed := strings.TrimSpace(o); trimmed != "" {
+				origins = append(origins, trimmed)
+			}
+		}
+		corsConfig.AllowOrigins = origins
+	}
+	router.Use(cors.New(corsConfig))
 	router.GET("/healthz", func(c *gin.Context) { c.Status(http.StatusOK) })
 	router.GET("/readyz", func(c *gin.Context) {
 		if redisClient.Ping(c).Err() != nil || database.Client().Ping(c, nil) != nil {
