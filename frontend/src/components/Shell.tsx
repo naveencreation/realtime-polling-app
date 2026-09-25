@@ -10,7 +10,6 @@ export function Shell({ children, minimal = false }: { children: React.ReactNode
       {!minimal && <nav className="site-nav" aria-label="Primary navigation"><Link to="/dashboard">Dashboard</Link><Link to="/create">New poll</Link><button className="text-button" onClick={signOut}>Sign out</button></nav>}
     </header>
     <main>{children}</main>
-    <footer className="site-footer"><span>Signal Polls / live by design</span><span className="mono">REDIS → SSE → ROOM</span></footer>
   </div>
 }
 

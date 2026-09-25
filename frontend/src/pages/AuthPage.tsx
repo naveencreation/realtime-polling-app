@@ -1,8 +1,189 @@
 import { useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { api } from '../lib/api'
-import { Shell } from '../components/Shell'
 
-export function AuthPage({ mode }: { mode: 'login' | 'signup' }) { const isSignup = mode === 'signup'; const location = useLocation(); const navigate = useNavigate(); const [email,setEmail]=useState(''); const [username,setUsername]=useState(''); const [password,setPassword]=useState(''); const [error,setError]=useState(''); const [loading,setLoading]=useState(false)
-  async function submit(event: React.FormEvent){event.preventDefault();setLoading(true);setError('');try{if(isSignup)await api.signup({username,email,password});await api.login({email,password});navigate('/dashboard')}catch(caught){setError(caught instanceof Error?caught.message:'Could not continue.')}finally{setLoading(false)}}
-  return <Shell minimal><div className="auth-layout"><aside className="auth-aside"><Link className="back-link" to="/">← Back to signal</Link><div><span className="section-label">{isSignup ? 'Make the room' : 'Welcome back'}</span><h1>{isSignup ? 'Your question deserves a room.' : 'Pick up where the room left off.'}</h1><p>{isSignup ? 'Create a creator account in a minute. Your audience never needs one.' : 'Sign in to make a new poll, or keep an eye on the conversations you started.'}</p></div><span className="mono auth-note">CREATOR ACCESS / {location.pathname.toUpperCase()}</span></aside><section className="auth-panel"><div className="auth-form-wrap"><div className="form-heading"><span className="signal-line"><span className="signal-pulse" /> {isSignup ? 'New creator' : 'Creator sign in'}</span><h2>{isSignup ? 'Start with a question.' : 'Good to see you.'}</h2></div>{error && <div className="error-banner" role="alert">{error}</div>}<form className="form-stack" onSubmit={submit}>{isSignup&&<><label className="field-label" htmlFor="username">Your name<span>Required</span></label><input id="username" value={username} onChange={(e)=>setUsername(e.target.value)} placeholder="e.g. Maya" autoComplete="username" required /></>}<label className="field-label" htmlFor="email">Email<span>Required</span></label><input id="email" type="email" value={email} onChange={(e)=>setEmail(e.target.value)} placeholder="you@example.com" autoComplete="email" required /><label className="field-label" htmlFor="password">Password<span>{isSignup?'8 characters minimum':'Required'}</span></label><input id="password" type="password" minLength={isSignup?8:undefined} value={password} onChange={(e)=>setPassword(e.target.value)} placeholder="••••••••" autoComplete={isSignup?'new-password':'current-password'} required /><button className="primary-button" disabled={loading}>{loading?(isSignup?'Creating…':'Signing in…'):(isSignup?'Create creator account':'Sign in')} <span aria-hidden="true">↗</span></button></form><p className="form-switch">{isSignup?'Already have a creator account?':'Need a creator account?'} <Link to={isSignup?'/login':'/signup'}>{isSignup?'Sign in':'Create one'}</Link></p></div></section></div></Shell> }
+function EyeIcon({ visible }: { visible: boolean }) {
+  if (visible) {
+    return (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+        <circle cx="12" cy="12" r="3" />
+      </svg>
+    )
+  }
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+      <line x1="1" y1="1" x2="23" y2="23" />
+    </svg>
+  )
+}
+
+export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
+  const isSignup = mode === 'signup'
+  const location = useLocation()
+  const navigate = useNavigate()
+  const [email, setEmail] = useState('')
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault()
+    setError('')
+
+    if (isSignup && password !== confirmPassword) {
+      setError('Passwords do not match.')
+      return
+    }
+
+    setLoading(true)
+    try {
+      if (isSignup) await api.signup({ username, email, password })
+      await api.login({ email, password })
+      navigate('/dashboard')
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Could not continue.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="auth-layout">
+      <aside className="auth-aside">
+        <div className="auth-aside-header">
+          <Link className="wordmark wordmark-light" to="/" aria-label="Signal Polls home">
+            <span className="wordmark-mark wordmark-mark-light">S</span>
+            <span>signal<span className="wordmark-dot">.</span></span>
+          </Link>
+          <Link className="auth-back-link" to="/">
+            ← Back to home
+          </Link>
+        </div>
+
+        <div className="auth-aside-content">
+          <span className="section-label">{isSignup ? 'Make the room' : 'Welcome back'}</span>
+          <h1>{isSignup ? 'Your question deserves a room.' : 'Pick up where the room left off.'}</h1>
+          <p>
+            {isSignup
+              ? 'Create a creator account in a minute. Your audience never needs one.'
+              : 'Sign in to make a new poll, or keep an eye on the conversations you started.'}
+          </p>
+        </div>
+
+        <div className="auth-aside-footer">
+          <span className="mono auth-note">CREATOR ACCESS / {location.pathname.toUpperCase()}</span>
+        </div>
+      </aside>
+
+      <section className="auth-panel">
+        <div className="auth-form-wrap">
+          <div className="form-heading">
+            <span className="signal-line">
+              <span className="signal-pulse" /> {isSignup ? 'New creator' : 'Creator sign in'}
+            </span>
+            <h2>{isSignup ? 'Start with a question.' : 'Good to see you.'}</h2>
+          </div>
+          {error && <div className="error-banner" role="alert">{error}</div>}
+          <form className="form-stack" onSubmit={submit}>
+            {isSignup && (
+              <>
+                <label className="field-label" htmlFor="username">
+                  Your name<span>Required</span>
+                </label>
+                <input
+                  id="username"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder="e.g. Maya"
+                  autoComplete="username"
+                  required
+                />
+              </>
+            )}
+            <label className="field-label" htmlFor="email">
+              Email<span>Required</span>
+            </label>
+            <input
+              id="email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@example.com"
+              autoComplete="email"
+              required
+            />
+
+            <label className="field-label" htmlFor="password">
+              Password<span>{isSignup ? '8 characters minimum' : 'Required'}</span>
+            </label>
+            <div className="password-input-wrap">
+              <input
+                id="password"
+                type={showPassword ? 'text' : 'password'}
+                minLength={isSignup ? 8 : undefined}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                autoComplete={isSignup ? 'new-password' : 'current-password'}
+                required
+              />
+              <button
+                type="button"
+                className="password-toggle-btn"
+                onClick={() => setShowPassword(!showPassword)}
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                title={showPassword ? 'Hide password' : 'Show password'}
+              >
+                <EyeIcon visible={showPassword} />
+              </button>
+            </div>
+
+            {isSignup && (
+              <>
+                <label className="field-label" htmlFor="confirm-password">
+                  Repeat password<span>Must match</span>
+                </label>
+                <div className="password-input-wrap">
+                  <input
+                    id="confirm-password"
+                    type={showConfirmPassword ? 'text' : 'password'}
+                    minLength={8}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="••••••••"
+                    autoComplete="new-password"
+                    required
+                  />
+                  <button
+                    type="button"
+                    className="password-toggle-btn"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
+                    title={showConfirmPassword ? 'Hide password' : 'Show password'}
+                  >
+                    <EyeIcon visible={showConfirmPassword} />
+                  </button>
+                </div>
+              </>
+            )}
+
+            <button className="primary-button" disabled={loading}>
+              {loading ? (isSignup ? 'Creating…' : 'Signing in…') : isSignup ? 'Create creator account' : 'Sign in'}{' '}
+              <span aria-hidden="true">↗</span>
+            </button>
+          </form>
+          <p className="form-switch">
+            {isSignup ? 'Already have a creator account? ' : 'Need a creator account? '}
+            <Link to={isSignup ? '/login' : '/signup'}>{isSignup ? 'Sign in' : 'Create one'}</Link>
+          </p>
+        </div>
+      </section>
+    </div>
+  )
+}

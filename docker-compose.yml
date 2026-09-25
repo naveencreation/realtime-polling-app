@@ -1,17 +1,4 @@
 services:
-  mongo:
-    image: mongo:8
-    restart: unless-stopped
-    ports:
-      - "27017:27017"
-    volumes:
-      - mongo_data:/data/db
-    healthcheck:
-      test: ["CMD-SHELL", "mongosh --quiet --eval 'db.adminCommand({ ping: 1 }).ok' | grep 1"]
-      interval: 5s
-      timeout: 5s
-      retries: 12
-
   redis:
     image: redis:7-alpine
     restart: unless-stopped
@@ -34,17 +21,15 @@ services:
       - "8080:8080"
     environment:
       PORT: "8080"
-      MONGO_URI: mongodb://mongo:27017
-      MONGO_DB_NAME: polling_app
-      REDIS_ADDR: redis:6379
-      JWT_SECRET: local-development-secret-change-me
+      MONGO_URI: "mongodb+srv://naveenselvan0004_db_user:33wh5wKQDLXGGUYa@cluster0.si9nfr3.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
+      MONGO_DB_NAME: "polling_app"
+      REDIS_ADDR: "redis:6379"
+      JWT_SECRET: "local-development-secret-change-me"
       JWT_EXPIRY_HOURS: "24"
       BCRYPT_COST: "11"
-      FRONTEND_BASE_URL: http://localhost:5173
+      FRONTEND_BASE_URL: "http://localhost:5173"
       COOKIE_SECURE: "false"
     depends_on:
-      mongo:
-        condition: service_healthy
       redis:
         condition: service_healthy
 
@@ -57,18 +42,5 @@ services:
     depends_on:
       - backend
 
-  mongo-express:
-    image: mongo-express:1
-    restart: unless-stopped
-    ports:
-      - "127.0.0.1:8081:8081"
-    environment:
-      ME_CONFIG_MONGODB_URL: mongodb://mongo:27017/
-      ME_CONFIG_BASICAUTH: "false"
-    depends_on:
-      mongo:
-        condition: service_healthy
-
 volumes:
-  mongo_data:
   redis_data:

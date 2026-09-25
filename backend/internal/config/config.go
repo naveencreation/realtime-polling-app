@@ -15,6 +15,7 @@ type Config struct {
 }
 
 func Load() (Config, error) {
+	loadDotEnv()
 	c := Config{Port: env("PORT", "8080"), MongoURI: os.Getenv("MONGO_URI"), MongoDBName: env("MONGO_DB_NAME", "polling_app"), RedisAddr: env("REDIS_ADDR", "localhost:6379"), JWTSecret: os.Getenv("JWT_SECRET"), FrontendBaseURL: env("FRONTEND_BASE_URL", "http://localhost:5173"), AuthCookieName: "auth_token", VoterCookieName: "voter_token", JWTExpiryHours: intEnv("JWT_EXPIRY_HOURS", 24), BcryptCost: intEnv("BCRYPT_COST", 11), CookieSecure: boolEnv("COOKIE_SECURE", false)}
 	if c.MongoURI == "" {
 		return c, fmt.Errorf("MONGO_URI is required")
@@ -46,4 +47,29 @@ func boolEnv(k string, d bool) bool {
 		return d
 	}
 	return v
+}
+
+func loadDotEnv() {
+	paths := []string{".env", "../.env"}
+	for _, p := range paths {
+		data, err := os.ReadFile(p)
+		if err != nil {
+			continue
+		}
+		for _, line := range strings.Split(string(data), "\n") {
+			line = strings.TrimSpace(line)
+			if line == "" || strings.HasPrefix(line, "#") {
+				continue
+			}
+			parts := strings.SplitN(line, "=", 2)
+			if len(parts) == 2 {
+				k := strings.TrimSpace(parts[0])
+				v := strings.Trim(strings.TrimSpace(parts[1]), `"'`+"\r")
+				if _, exists := os.LookupEnv(k); !exists {
+					_ = os.Setenv(k, v)
+				}
+			}
+		}
+		break
+	}
 }
