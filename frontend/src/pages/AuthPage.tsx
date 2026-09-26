@@ -67,17 +67,17 @@ export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
         </div>
 
         <div className="auth-aside-content">
-          <span className="section-label">{isSignup ? 'Make the room' : 'Welcome back'}</span>
-          <h1>{isSignup ? 'Your question deserves a room.' : 'Pick up where the room left off.'}</h1>
+          <span className="section-label">{isSignup ? 'Get Started' : 'Welcome Back'}</span>
+          <h1>{isSignup ? 'Create live polls for your audience.' : 'Sign in to manage your polls.'}</h1>
           <p>
             {isSignup
-              ? 'Create a creator account in a minute. Your audience never needs one.'
-              : 'Sign in to make a new poll, or keep an eye on the conversations you started.'}
+              ? 'Sign up in seconds to create and share polls. Your audience can vote instantly without creating an account.'
+              : 'Sign in to create new polls, check live results, and manage your voting sessions.'}
           </p>
         </div>
 
         <div className="auth-aside-footer">
-          <span className="mono auth-note">CREATOR ACCESS / {location.pathname.toUpperCase()}</span>
+          <span className="mono auth-note">CREATOR PORTAL / {location.pathname.toUpperCase()}</span>
         </div>
       </aside>
 
@@ -85,9 +85,9 @@ export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
         <div className="auth-form-wrap">
           <div className="form-heading">
             <span className="signal-line">
-              <span className="signal-pulse" /> {isSignup ? 'New creator' : 'Creator sign in'}
+              <span className="signal-pulse" /> {isSignup ? 'Create Account' : 'Sign In'}
             </span>
-            <h2>{isSignup ? 'Start with a question.' : 'Good to see you.'}</h2>
+            <h2>{isSignup ? 'Start creating polls' : 'Welcome back'}</h2>
           </div>
           {error && <div className="error-banner" role="alert">{error}</div>}
           <form className="form-stack" onSubmit={submit}>
@@ -174,12 +174,12 @@ export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
             )}
 
             <button className="primary-button" disabled={loading}>
-              {loading ? (isSignup ? 'Creating…' : 'Signing in…') : isSignup ? 'Create creator account' : 'Sign in'}{' '}
+              {loading ? (isSignup ? 'Creating account…' : 'Signing in…') : isSignup ? 'Create account' : 'Sign in'}{' '}
               <span aria-hidden="true">↗</span>
             </button>
           </form>
           <p className="form-switch">
-            {isSignup ? 'Already have a creator account? ' : 'Need a creator account? '}
+            {isSignup ? 'Already have an account? ' : "Don't have an account? "}
             <Link to={isSignup ? '/login' : '/signup'}>{isSignup ? 'Sign in' : 'Create one'}</Link>
           </p>
         </div>

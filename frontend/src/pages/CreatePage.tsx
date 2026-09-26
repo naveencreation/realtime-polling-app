@@ -16,20 +16,20 @@ export function CreatePage() {
         <div className="create-layout">
           <div className="create-intro">
             <Link className="back-link" to="/dashboard">
-              ← Back to desk
+              ← Back to dashboard
             </Link>
-            <span className="section-label">New room</span>
+            <span className="section-label">New Poll</span>
             <h1>
-              Put a question
+              Create your
               <br />
-              in the air.
+              live poll.
             </h1>
             <p>
-              Keep it clear. Give people a few good ways to answer. The room will take care of the rest.
+              Type your question, add 2 to 6 options, and share the link with your audience to start gathering instant votes.
             </p>
             <div className="create-note">
               <span className="mono">01</span>
-              <span>Every poll gets a private creator link and a public share link.</span>
+              <span>Your audience votes anonymously without signing up. Results update in real time.</span>
             </div>
           </div>
           <section className="form-panel">

@@ -6,14 +6,14 @@ export function PollCreated({ poll, onReset }: { poll: Poll; onReset?: () => voi
   return (
     <div className="poll-created-layout">
       <div className="poll-created-info">
-        <span className="section-label">Room is live</span>
+        <span className="section-label">Poll is active</span>
         <h1>
-          Send the question
+          Share your poll
           <br />
-          <em>into the room.</em>
+          <em>with your audience.</em>
         </h1>
         <p className="created-lede">
-          Anyone with this link can answer once. Results will update live as votes come in.
+          Anyone with this link can vote once. Live results will update instantly on your screen as votes come in.
         </p>
 
         <div className="created-share-card">
@@ -22,14 +22,14 @@ export function PollCreated({ poll, onReset }: { poll: Poll; onReset?: () => voi
 
         <div className="created-actions">
           <Link className="primary-button" to={`/poll/${poll.id}`}>
-            Open live poll <span aria-hidden="true">↗</span>
+            Go to poll page <span aria-hidden="true">↗</span>
           </Link>
           <Link className="secondary-button" to="/dashboard">
             Back to dashboard
           </Link>
           {onReset && (
             <button type="button" className="text-button" onClick={onReset}>
-              Create another
+              Create another poll
             </button>
           )}
         </div>

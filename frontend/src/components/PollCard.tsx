@@ -49,7 +49,7 @@ export function PollCard({ poll, onClose, onDelete }: PollCardProps) {
               style={{ fontSize: '11px', padding: '2px 8px', color: 'var(--muted)', cursor: 'pointer' }}
               title="Close voting on this poll"
             >
-              {busy ? 'Closing…' : 'Close room'}
+              {busy ? 'Closing…' : 'Close poll'}
             </button>
           )}
           {poll.status === 'closed' && onDelete && (

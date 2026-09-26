@@ -45,9 +45,9 @@ export function DashboardPage() {
       <div className="page-shell">
         <div className="page-heading">
           <div>
-            <span className="section-label">Creator desk</span>
-            <h1>Your rooms.</h1>
-            <p>Make a question worth gathering around.</p>
+            <span className="section-label">Creator Dashboard</span>
+            <h1>Your Polls</h1>
+            <p>Manage your active polls and view live audience responses.</p>
           </div>
           <Link className="primary-button" to="/create">
             New poll <span aria-hidden="true">↗</span>
@@ -55,14 +55,14 @@ export function DashboardPage() {
         </div>
         {error && <div className="error-banner">{error}</div>}
         {loading ? (
-          <Loading label="Loading your rooms" />
+          <Loading label="Loading your polls…" />
         ) : polls.length === 0 ? (
           <div className="empty-state">
             <span className="empty-number">01</span>
-            <h2>The room is quiet.</h2>
-            <p>You have not published a poll yet. Start with the question your group keeps circling.</p>
+            <h2>No polls created yet</h2>
+            <p>You haven't created any polls yet. Ask a question and share the link with your audience to start collecting live votes.</p>
             <Link className="primary-button" to="/create">
-              Publish your first poll <span aria-hidden="true">↗</span>
+              Create your first poll <span aria-hidden="true">↗</span>
             </Link>
           </div>
         ) : (
