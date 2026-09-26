@@ -179,6 +179,7 @@ The services will be available at:
 * `GET /api/polls/mine` *(Auth Required)* — List polls created by the authenticated creator.
 * `GET /api/polls/:id` — Get poll details, options, expiration status, and current counts.
 * `PATCH /api/polls/:id/close` *(Auth Required)* — Immediately close voting on a poll.
+* `DELETE /api/polls/:id` *(Auth Required)* — Permanently delete a poll, cascade purge audit records from MongoDB, remove in-memory Redis keys, and broadcast a deletion event to SSE listeners. **Constraint**: The poll must be in `closed` status before it can be deleted (Rule B lifecycle safeguard).
 
 ### Voting & Real-Time Streams
 * `POST /api/polls/:id/vote` — Cast an atomic vote.
