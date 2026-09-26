@@ -60,6 +60,7 @@ export const api = {
   getPoll: (id: string) => request<Poll>(`/polls/${id}`),
   vote: (id: string, optionId: string) => request<{ accepted: boolean; counts: Record<string, number> }>(`/polls/${id}/vote`, { method: 'POST', body: JSON.stringify({ optionId }) }),
   closePoll: (id: string) => request<{ id: string; status: 'closed' }>(`/polls/${id}/close`, { method: 'PATCH' }),
+  deletePoll: (id: string) => request<{ id: string; deleted: boolean }>(`/polls/${id}`, { method: 'DELETE' }),
 }
 
 export function apiBaseForEvents() { return API_BASE }

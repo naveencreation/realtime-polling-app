@@ -101,3 +101,9 @@ func (service Service) RegisterVote(ctx context.Context, pollID, voterToken, opt
 func (service Service) PublishClosed(ctx context.Context, pollID string) error {
 	return service.Redis.Publish(ctx, UpdatesKey(pollID), `{"event":"closed"}`).Err()
 }
+
+// DeletePollData purges Redis keys for pollID and broadcasts a deleted event to subscribers.
+func (service Service) DeletePollData(ctx context.Context, pollID string) error {
+	_ = service.Redis.Publish(ctx, UpdatesKey(pollID), `{"event":"deleted"}`)
+	return service.Redis.Del(ctx, VotersKey(pollID), VotesKey(pollID)).Err()
+}

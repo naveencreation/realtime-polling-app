@@ -8,7 +8,9 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
 	"polling-backend/internal/middleware"
 	"polling-backend/internal/models"
 	"polling-backend/pkg/response"
@@ -19,12 +21,14 @@ type LiveService interface {
 	HasVoted(ctx context.Context, pollID, voterToken string) (bool, error)
 	Counts(ctx context.Context, pollID string) (map[string]int, error)
 	PublishClosed(ctx context.Context, pollID string) error
+	DeletePollData(ctx context.Context, pollID string) error
 }
 
-// Handler coordinates poll creation, inspection, closure, and author listings.
+// Handler coordinates poll creation, inspection, closure, deletion, and author listings.
 type Handler struct {
 	Repo            Repository
 	VoteService     LiveService
+	Audit           *mongo.Collection
 	FrontendBaseURL string
 	VoterCookie     string
 	Secure          bool
@@ -249,6 +253,65 @@ func (handler Handler) Close(ginCtx *gin.Context) {
 	}
 
 	response.JSON(ginCtx, http.StatusOK, gin.H{"id": pollID.Hex(), "status": models.StatusClosed})
+}
+
+// Delete handles DELETE /api/polls/:id.
+// Strictly enforces Rule B: The poll must be in "closed" status before it can be deleted.
+func (handler Handler) Delete(ginCtx *gin.Context) {
+	logger := middleware.GetLogger(ginCtx)
+
+	userID, ok := parseUserID(ginCtx)
+	if !ok {
+		response.Error(ginCtx, http.StatusUnauthorized, "unauthorized", "authentication required")
+		return
+	}
+
+	pollID, ok := parsePollID(ginCtx)
+	if !ok {
+		response.Error(ginCtx, http.StatusNotFound, "not_found", "poll not found")
+		return
+	}
+
+	pollItem, err := handler.Repo.FindByID(ginCtx, pollID)
+	if err != nil {
+		logger.Error("database error finding poll to delete", "poll_id", pollID.Hex(), "error", err)
+		response.Error(ginCtx, http.StatusInternalServerError, "server_error", "something went wrong")
+		return
+	}
+	if pollItem == nil {
+		response.Error(ginCtx, http.StatusNotFound, "not_found", "poll not found")
+		return
+	}
+
+	if pollItem.CreatorID != userID {
+		response.Error(ginCtx, http.StatusForbidden, "forbidden", "not authorized to delete this poll")
+		return
+	}
+
+	// Rule B enforcement: Poll must be closed before deletion
+	if pollItem.Status != models.StatusClosed {
+		response.Error(ginCtx, http.StatusBadRequest, "poll_must_be_closed", "poll must be closed before it can be deleted")
+		return
+	}
+
+	if err = handler.Repo.Delete(ginCtx, pollID); err != nil {
+		logger.Error("database error deleting poll from database", "poll_id", pollID.Hex(), "error", err)
+		response.Error(ginCtx, http.StatusInternalServerError, "server_error", "something went wrong")
+		return
+	}
+
+	if handler.Audit != nil {
+		auditCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		_, _ = handler.Audit.DeleteMany(auditCtx, bson.M{"pollId": pollID})
+		cancel()
+	}
+
+	if err = handler.VoteService.DeletePollData(ginCtx, pollID.Hex()); err != nil {
+		logger.Error("redis error purging poll data on delete", "poll_id", pollID.Hex(), "error", err)
+	}
+
+	logger.Info("poll deleted successfully", "poll_id", pollID.Hex(), "user_id", userID.Hex())
+	response.JSON(ginCtx, http.StatusOK, gin.H{"id": pollID.Hex(), "deleted": true})
 }
 
 // ListMine handles GET /api/polls/mine. Returns all polls authored by the authenticated user.

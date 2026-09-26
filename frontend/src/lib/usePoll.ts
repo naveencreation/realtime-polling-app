@@ -44,6 +44,12 @@ export function usePoll(id: string) {
         setConnection('live')
         source?.close()
       })
+      source.addEventListener('deleted', () => {
+        setNotice('This poll has been deleted by the organizer.')
+        setConnection('offline')
+        disposed = true
+        source?.close()
+      })
       source.onopen = () => setConnection('live')
       source.onerror = () => {
         setConnection('offline')

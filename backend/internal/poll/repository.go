@@ -58,6 +58,12 @@ func (repo Repository) SetStatus(ctx context.Context, pollID primitive.ObjectID,
 	return err
 }
 
+// Delete removes a poll document by its ObjectID.
+func (repo Repository) Delete(ctx context.Context, pollID primitive.ObjectID) error {
+	_, err := repo.Collection.DeleteOne(ctx, bson.M{"_id": pollID})
+	return err
+}
+
 // ResolveLazyExpiry checks if an open poll has passed its expiration deadline.
 // If expired, it closes the poll in the database and updates the in-memory struct.
 func (repo Repository) ResolveLazyExpiry(ctx context.Context, pollItem *models.Poll) error {

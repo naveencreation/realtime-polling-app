@@ -78,6 +78,7 @@ func run(logger *slog.Logger) error {
 	pollHandler := poll.Handler{
 		Repo:            pollRepo,
 		VoteService:     voteService,
+		Audit:           database.Collection("votes"),
 		FrontendBaseURL: cfg.FrontendBaseURL,
 		VoterCookie:     cfg.VoterCookieName,
 		Secure:          cfg.CookieSecure,
@@ -105,7 +106,7 @@ func run(logger *slog.Logger) error {
 	// Configure cross-origin resource sharing for frontend integration
 	corsConfig := cors.Config{
 		AllowCredentials: true,
-		AllowMethods:     []string{"GET", "POST", "PATCH", "OPTIONS"},
+		AllowMethods:     []string{"GET", "POST", "PATCH", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Voter-Token", "X-Request-ID"},
 		ExposeHeaders:    []string{"Content-Length", "Set-Cookie", "X-Voter-Token", "X-Request-ID"},
 	}
@@ -160,6 +161,7 @@ func run(logger *slog.Logger) error {
 	protected.GET("/polls/mine", pollHandler.ListMine)
 	protected.POST("/polls", pollHandler.Create)
 	protected.PATCH("/polls/:id/close", pollHandler.Close)
+	protected.DELETE("/polls/:id", pollHandler.Delete)
 
 	// Public poll view, vote, and real-time streaming routes
 	api.GET("/polls/:id", pollHandler.Get)
