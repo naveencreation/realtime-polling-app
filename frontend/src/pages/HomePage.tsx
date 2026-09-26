@@ -7,9 +7,6 @@ export function HomePage() {
       <div className="home-page">
         <section className="home-hero">
           <div className="hero-copy">
-            <div className="signal-line">
-              <span className="signal-pulse" /> Real-time audience polling
-            </div>
             <h1>
               Ask questions.<br />
               <em>See votes live.</em>
@@ -19,7 +16,7 @@ export function HomePage() {
             </p>
             <div className="hero-actions">
               <Link className="primary-button" to="/signup">
-                Create a poll <span aria-hidden="true">↗</span>
+                Create a poll →
               </Link>
               <Link className="quiet-link" to="/login">
                 Sign in to your account

@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { formatDate, formatTimeLeft } from '../lib/format'
 import type { Poll } from '../lib/types'
@@ -6,62 +5,38 @@ import { SharePoll } from './SharePoll'
 
 interface PollCardProps {
   poll: Poll
-  onClose?: (pollId: string) => Promise<void> | void
-  onDelete?: (pollId: string) => Promise<void> | void
+  onRequestClose?: (poll: Poll) => void
+  onRequestDelete?: (poll: Poll) => void
 }
 
-export function PollCard({ poll, onClose, onDelete }: PollCardProps) {
-  const [busy, setBusy] = useState(false)
-
-  const handleClose = async () => {
-    if (!onClose || busy) return
-    if (!window.confirm('Close this poll to new responses? Live results will remain visible.')) return
-    setBusy(true)
-    try {
-      await onClose(poll.id)
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const handleDelete = async () => {
-    if (!onDelete || busy) return
-    if (!window.confirm('Permanently delete this poll and all its responses? This cannot be undone.')) return
-    setBusy(true)
-    try {
-      await onDelete(poll.id)
-    } finally {
-      setBusy(false)
-    }
-  }
-
+export function PollCard({ poll, onRequestClose, onRequestDelete }: PollCardProps) {
   return (
-    <article className="poll-card">
+    <article className={`poll-card is-${poll.status}`}>
       <div className="poll-card-top">
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span className={`status-chip status-${poll.status}`}>{poll.status}</span>
-          {poll.status === 'open' && onClose && (
+          <span className={`status-chip status-${poll.status}`}>
+            {poll.status === 'open' ? 'Active' : 'Closed'}
+          </span>
+          {poll.status === 'open' && onRequestClose && (
             <button
               type="button"
               className="text-button"
-              onClick={handleClose}
-              disabled={busy}
+              onClick={() => onRequestClose(poll)}
               style={{ fontSize: '11px', padding: '2px 8px', color: 'var(--muted)', cursor: 'pointer' }}
               title="Close voting on this poll"
             >
-              {busy ? 'Closing…' : 'Close poll'}
+              Close poll
             </button>
           )}
-          {poll.status === 'closed' && onDelete && (
+          {poll.status === 'closed' && onRequestDelete && (
             <button
               type="button"
               className="text-button"
-              onClick={handleDelete}
-              disabled={busy}
+              onClick={() => onRequestDelete(poll)}
               style={{ fontSize: '11px', padding: '2px 8px', color: '#c53030', cursor: 'pointer' }}
               title="Permanently delete this closed poll"
             >
-              {busy ? 'Deleting…' : 'Delete'}
+              Delete poll
             </button>
           )}
         </div>
@@ -69,8 +44,17 @@ export function PollCard({ poll, onClose, onDelete }: PollCardProps) {
       </div>
       <h2>{poll.question}</h2>
       <div className="poll-card-bottom">
-        <span className="muted">{poll.options.length} options · {formatTimeLeft(poll.expiresAt)}</span>
-        <Link className="arrow-link" to={`/poll/${poll.id}`}>Open poll <span aria-hidden="true">↗</span></Link>
+        <span className="muted">
+          {poll.options.length} options · {poll.status === 'closed' ? 'Closed' : formatTimeLeft(poll.expiresAt)}
+        </span>
+        <Link
+          className="arrow-link"
+          to={`/poll/${poll.id}`}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          {poll.status === 'closed' ? 'View results ↗' : 'View poll ↗'}
+        </Link>
       </div>
       <SharePoll poll={poll} compact />
     </article>

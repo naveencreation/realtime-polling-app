@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { api } from '../lib/api'
 
 function EyeIcon({ visible }: { visible: boolean }) {
@@ -21,7 +21,6 @@ function EyeIcon({ visible }: { visible: boolean }) {
 
 export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
   const isSignup = mode === 'signup'
-  const location = useLocation()
   const navigate = useNavigate()
   const [email, setEmail] = useState('')
   const [username, setUsername] = useState('')
@@ -75,39 +74,37 @@ export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
               : 'Sign in to create new polls, check live results, and manage your voting sessions.'}
           </p>
         </div>
-
-        <div className="auth-aside-footer">
-          <span className="mono auth-note">CREATOR PORTAL / {location.pathname.toUpperCase()}</span>
-        </div>
       </aside>
 
       <section className="auth-panel">
         <div className="auth-form-wrap">
           <div className="form-heading">
-            <span className="signal-line">
-              <span className="signal-pulse" /> {isSignup ? 'Create Account' : 'Sign In'}
-            </span>
-            <h2>{isSignup ? 'Start creating polls' : 'Welcome back'}</h2>
+            <h2>{isSignup ? 'Create your account' : 'Welcome back'}</h2>
+            <p className="form-subheading">
+              {isSignup
+                ? 'Free for creators and audiences. No credit card needed.'
+                : 'Sign in to manage your polls and view live results.'}
+            </p>
           </div>
           {error && <div className="error-banner" role="alert">{error}</div>}
           <form className="form-stack" onSubmit={submit}>
             {isSignup && (
               <>
                 <label className="field-label" htmlFor="username">
-                  Your name<span>Required</span>
+                  Full name
                 </label>
                 <input
                   id="username"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  placeholder="e.g. Maya"
-                  autoComplete="username"
+                  placeholder="e.g. Naveen Selvan"
+                  autoComplete="name"
                   required
                 />
               </>
             )}
             <label className="field-label" htmlFor="email">
-              Email<span>Required</span>
+              Email address
             </label>
             <input
               id="email"
@@ -120,7 +117,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
             />
 
             <label className="field-label" htmlFor="password">
-              Password<span>{isSignup ? '8 characters minimum' : 'Required'}</span>
+              Password
             </label>
             <div className="password-input-wrap">
               <input
@@ -129,7 +126,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
                 minLength={isSignup ? 8 : undefined}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
+                placeholder="At least 8 characters"
                 autoComplete={isSignup ? 'new-password' : 'current-password'}
                 required
               />
@@ -143,11 +140,18 @@ export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
                 <EyeIcon visible={showPassword} />
               </button>
             </div>
+            {isSignup && password.length > 0 && (
+              <p className={`field-hint ${password.length >= 8 ? 'is-valid' : ''}`}>
+                {password.length >= 8
+                  ? '✓ 8+ characters'
+                  : `At least 8 characters (${password.length}/8)`}
+              </p>
+            )}
 
             {isSignup && (
               <>
                 <label className="field-label" htmlFor="confirm-password">
-                  Repeat password<span>Must match</span>
+                  Confirm password
                 </label>
                 <div className="password-input-wrap">
                   <input
@@ -156,7 +160,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
                     minLength={8}
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
-                    placeholder="••••••••"
+                    placeholder="Repeat your password"
                     autoComplete="new-password"
                     required
                   />
@@ -170,12 +174,16 @@ export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
                     <EyeIcon visible={showConfirmPassword} />
                   </button>
                 </div>
+                {confirmPassword.length > 0 && (
+                  <p className={`field-hint ${confirmPassword === password ? 'is-valid' : 'is-invalid'}`}>
+                    {confirmPassword === password ? '✓ Passwords match' : 'Passwords do not match yet'}
+                  </p>
+                )}
               </>
             )}
 
-            <button className="primary-button" disabled={loading}>
-              {loading ? (isSignup ? 'Creating account…' : 'Signing in…') : isSignup ? 'Create account' : 'Sign in'}{' '}
-              <span aria-hidden="true">↗</span>
+            <button className="primary-button" disabled={loading} style={{ justifyContent: 'center' }}>
+              {loading ? (isSignup ? 'Creating account…' : 'Signing in…') : isSignup ? 'Create account' : 'Sign in'}
             </button>
           </form>
           <p className="form-switch">

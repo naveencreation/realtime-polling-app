@@ -1,4 +1,4 @@
-export function publicPollUrl(shareUrl: string, pollId: string) {
+export function publicPollUrl(shareUrl?: string, pollId: string = '') {
   if (typeof window !== 'undefined' && window.location?.origin) {
     return `${window.location.origin}/poll/${pollId}`
   }

@@ -5,6 +5,7 @@ import type { Poll } from '../lib/types'
 import { PollCard } from '../components/PollCard'
 import { Loading } from '../components/Loading'
 import { Shell } from '../components/Shell'
+import { ConfirmModal } from '../components/ConfirmModal'
 
 export function DashboardPage() {
   const navigate = useNavigate()
@@ -12,7 +13,12 @@ export function DashboardPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
+  const [pollToDelete, setPollToDelete] = useState<Poll | null>(null)
+  const [pollToClose, setPollToClose] = useState<Poll | null>(null)
+  const [modalLoading, setModalLoading] = useState(false)
+
   useEffect(() => {
+    document.title = 'Dashboard — Signal'
     api.listMine()
       .then(setPolls)
       .catch(() => {
@@ -22,21 +28,31 @@ export function DashboardPage() {
       .finally(() => setLoading(false))
   }, [navigate])
 
-  const handleClose = async (pollId: string) => {
+  const handleConfirmClose = async () => {
+    if (!pollToClose) return
+    setModalLoading(true)
     try {
-      await api.closePoll(pollId)
-      setPolls(prev => prev.map(p => p.id === pollId ? { ...p, status: 'closed' } : p))
+      await api.closePoll(pollToClose.id)
+      setPolls(prev => prev.map(p => p.id === pollToClose.id ? { ...p, status: 'closed' } : p))
+      setPollToClose(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not close poll.')
+    } finally {
+      setModalLoading(false)
     }
   }
 
-  const handleDelete = async (pollId: string) => {
+  const handleConfirmDelete = async () => {
+    if (!pollToDelete) return
+    setModalLoading(true)
     try {
-      await api.deletePoll(pollId)
-      setPolls(prev => prev.filter(p => p.id !== pollId))
+      await api.deletePoll(pollToDelete.id)
+      setPolls(prev => prev.filter(p => p.id !== pollToDelete.id))
+      setPollToDelete(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not delete poll.')
+    } finally {
+      setModalLoading(false)
     }
   }
 
@@ -45,12 +61,11 @@ export function DashboardPage() {
       <div className="page-shell">
         <div className="page-heading">
           <div>
-            <span className="section-label">Creator Dashboard</span>
             <h1>Your Polls</h1>
-            <p>Manage your active polls and view live audience responses.</p>
+            <p>Track votes and manage your polls in real time.</p>
           </div>
           <Link className="primary-button" to="/create">
-            New poll <span aria-hidden="true">↗</span>
+            + Create poll
           </Link>
         </div>
         {error && <div className="error-banner">{error}</div>}
@@ -58,11 +73,10 @@ export function DashboardPage() {
           <Loading label="Loading your polls…" />
         ) : polls.length === 0 ? (
           <div className="empty-state">
-            <span className="empty-number">01</span>
             <h2>No polls created yet</h2>
             <p>You haven't created any polls yet. Ask a question and share the link with your audience to start collecting live votes.</p>
             <Link className="primary-button" to="/create">
-              Create your first poll <span aria-hidden="true">↗</span>
+              + Create your first poll
             </Link>
           </div>
         ) : (
@@ -71,13 +85,37 @@ export function DashboardPage() {
               <PollCard
                 key={poll.id}
                 poll={poll}
-                onClose={handleClose}
-                onDelete={handleDelete}
+                onRequestClose={setPollToClose}
+                onRequestDelete={setPollToDelete}
               />
             ))}
           </div>
         )}
       </div>
+
+      <ConfirmModal
+        isOpen={!!pollToDelete}
+        title="Delete poll?"
+        message={`Are you sure you want to permanently delete "${pollToDelete?.question}"? All votes and responses will be permanently removed. This action cannot be undone.`}
+        confirmText="Delete poll"
+        cancelText="Cancel"
+        isDestructive={true}
+        loading={modalLoading}
+        onConfirm={handleConfirmDelete}
+        onCancel={() => !modalLoading && setPollToDelete(null)}
+      />
+
+      <ConfirmModal
+        isOpen={!!pollToClose}
+        title="Close voting on this poll?"
+        message={`Voting on "${pollToClose?.question}" will stop immediately. Existing responses and final results will remain visible to you and your audience.`}
+        confirmText="Close poll"
+        cancelText="Cancel"
+        isDestructive={false}
+        loading={modalLoading}
+        onConfirm={handleConfirmClose}
+        onCancel={() => !modalLoading && setPollToClose(null)}
+      />
     </Shell>
   )
 }

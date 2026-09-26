@@ -6,7 +6,6 @@ export function PollCreated({ poll, onReset }: { poll: Poll; onReset?: () => voi
   return (
     <div className="poll-created-layout">
       <div className="poll-created-info">
-        <span className="section-label">Poll is active</span>
         <h1>
           Share your poll
           <br />
@@ -21,8 +20,13 @@ export function PollCreated({ poll, onReset }: { poll: Poll; onReset?: () => voi
         </div>
 
         <div className="created-actions">
-          <Link className="primary-button" to={`/poll/${poll.id}`}>
-            Go to poll page <span aria-hidden="true">↗</span>
+          <Link
+            className="primary-button"
+            to={`/poll/${poll.id}`}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            View live poll ↗
           </Link>
           <Link className="secondary-button" to="/dashboard">
             Back to dashboard
