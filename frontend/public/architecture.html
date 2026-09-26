@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Signal Poll — System Architecture Diagram</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <style>
+    :root {
+      --paper: #f4f0e8;
+      --surface: #fffdf8;
+      --ink: #171717;
+      --muted: #6e6b64;
+      --line: #d8d1c5;
+      --orange: #e85d2a;
+      --green: #258a57;
+      --blue: #2b6cb0;
+      --red: #b63b34;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Space Grotesk', system-ui, sans-serif;
+      background: var(--paper);
+      color: var(--ink);
+      padding: 40px 24px 80px;
+      min-height: 100vh;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    header {
+      margin-bottom: 32px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      border-bottom: 1px solid var(--line);
+      padding-bottom: 24px;
+    }
+    .title-group h1 {
+      font-size: 34px;
+      letter-spacing: -0.05em;
+      font-weight: 700;
+      color: var(--ink);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .badge {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      background: #fdeee7;
+      color: var(--orange);
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-weight: 600;
+    }
+    .subtitle {
+      color: var(--muted);
+      font-size: 15px;
+      margin-top: 6px;
+    }
+    .meta-tags {
+      display: flex;
+      gap: 10px;
+    }
+    .tag {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 11px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      padding: 4px 10px;
+      border-radius: 6px;
+      color: var(--muted);
+    }
+    .tag strong { color: var(--ink); }
+
+    .diagram-card {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 36px 24px;
+      box-shadow: 0 4px 24px rgba(23, 23, 23, 0.05);
+      margin-bottom: 36px;
+      overflow-x: auto;
+    }
+
+    .flow-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px;
+      margin-top: 36px;
+    }
+    .flow-card {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 22px;
+    }
+    .flow-card-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .step-num {
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      background: #fbf2ea;
+      border: 1px solid #ebdacf;
+      color: var(--orange);
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 12px;
+      font-weight: 600;
+      display: grid;
+      place-items: center;
+    }
+    .flow-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--ink);
+    }
+    .flow-desc {
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.55;
+    }
+    .flow-code {
+      font-family: 'IBM Plex Mono', monospace;
+      background: #eee8dc;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 11px;
+      color: var(--ink);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="title-group">
+        <h1>Signal Poll Architecture <span class="badge">Production V1</span></h1>
+        <p class="subtitle">Distributed Real-Time Polling Engine with Go, Redis, MongoDB Atlas, and React 19</p>
+      </div>
+      <div class="meta-tags">
+        <span class="tag">Frontend: <strong>Vercel Edge</strong></span>
+        <span class="tag">Backend: <strong>AWS EC2 + Caddy</strong></span>
+        <span class="tag">Realtime: <strong>Redis 7</strong></span>
+        <span class="tag">Database: <strong>MongoDB Atlas</strong></span>
+      </div>
+    </header>
+
+    <div class="diagram-card">
+      <div class="mermaid">
+flowchart TD
+    subgraph Clients ["👥 Client Tier (Browsers & Voters)"]
+        Creator["👨‍💻 Creator<br/>(Dashboard & Poll Manager)"]
+        Voters["📱 Audience Voters<br/>(Anonymous Mobile & Desktop)"]
+    end
+
+    subgraph FrontendTier ["🌐 Frontend Tier (Vercel Global Edge CDN)"]
+        VercelApp["⚡ React 19 + TypeScript + Vite<br/><code>polling.naveenselvan.me</code>"]
+        EventSourceClient["📡 Native EventSource Client<br/>(Auto Reconnect with Exponential Backoff)"]
+    end
+
+    subgraph IngressTier ["🛡️ Ingress & Security Tier (AWS EC2 AP-South-1)"]
+        Caddy["🔒 Caddy Web Server 2<br/><code>polling-api.naveenselvan.me</code><br/>• Auto Let's Encrypt TLS (HTTPS / HTTP/2)<br/>• Unbuffered SSE: X-Accel-Buffering: no"]
+    end
+
+    subgraph BackendTier ["⚙️ Application Tier (Go 1.24 + Gin Framework)"]
+        Router["Gin Engine & Middleware<br/>(CORS, Recovery, RequestLogger)"]
+        AuthSvc["🔐 Auth Service<br/>(JWT v5 + BCrypt Cost 11)"]
+        PollHandler["📋 Poll Lifecycle Manager<br/>(Server Validation & Rule B Constraint)"]
+        StreamHandler["📡 SSE Stream Handler<br/>(Flushes :connected & streams JSON)"]
+        VoteHandler["🗳️ Vote Processing Engine<br/>(Microsecond In-Memory Pipeline)"]
+    end
+
+    subgraph DataTier ["💾 Hybrid Real-Time & Persistence Tier"]
+        subgraph RedisBox ["⚡ Redis 7 (In-Memory Engine)"]
+            RedisCounts["📊 Atomic Tallies: HINCRBY<br/><code>poll:{id}:counts {opt} 1</code>"]
+            RedisVoters["🛡️ Voter Dedup: SADD O(1)<br/><code>poll:{id}:voters {voterToken}</code>"]
+            RedisPubSub["📢 Pub/Sub Broker<br/><code>poll:{id}:events</code> Channel"]
+        end
+
+        subgraph MongoBox ["🍃 MongoDB Atlas (Cloud Replica Set)"]
+            MongoUsers["users Collection<br/>(Credentials & Password Hashes)"]
+            MongoPolls["polls Collection<br/>(Questions, Options, Deadlines)"]
+            MongoVotes["votes Collection<br/>(Asynchronous Audit Event Stream)"]
+        end
+    end
+
+    %% Client Interactions
+    Creator -->|HTTPS Browse & Manage| VercelApp
+    Voters -->|HTTPS Vote & View| VercelApp
+    VercelApp --> EventSourceClient
+
+    %% Frontend to API
+    Creator -.->|REST API /api/polls| Caddy
+    Voters -.->|POST /api/polls/:id/vote| Caddy
+    EventSourceClient ==>|SSE GET /api/polls/:id/stream| Caddy
+
+    %% Caddy to Backend
+    Caddy -->|Reverse Proxy :8080| Router
+    Router --> AuthSvc
+    Router --> PollHandler
+    Router --> VoteHandler
+    Router --> StreamHandler
+
+    %% Backend to Data Tier
+    AuthSvc <-->|Read / Write Users| MongoUsers
+    PollHandler <-->|CRUD Polls & Enforce Rule B| MongoPolls
+    PollHandler -.->|Initialize Counts| RedisCounts
+
+    VoteHandler ==>|1. Check & Add Voter Token| RedisVoters
+    VoteHandler ==>|2. Atomic Increment Count| RedisCounts
+    VoteHandler ==>|3. Publish New Snapshot| RedisPubSub
+    VoteHandler -.->|4. Async Audit Trail Write| MongoVotes
+
+    RedisPubSub ==>|Subscribed Event Notification| StreamHandler
+    StreamHandler ==>|Real-Time Server-Sent Events| Caddy
+
+    classDef client fill:#fbf9f5,stroke:#d8d1c5,stroke-width:2px,color:#171717
+    classDef edge fill:#f3f0e6,stroke:#e85d2a,stroke-width:2px,color:#171717
+    classDef proxy fill:#eef5ef,stroke:#2f7d5a,stroke-width:2px,color:#171717
+    classDef app fill:#e8f4fd,stroke:#2b6cb0,stroke-width:2px,color:#171717
+    classDef redis fill:#fff2f0,stroke:#b63b34,stroke-width:2px,color:#171717
+    classDef mongo fill:#f0fbf4,stroke:#258a57,stroke-width:2px,color:#171717
+
+    class Creator,Voters client
+    class VercelApp,EventSourceClient edge
+    class Caddy proxy
+    class Router,AuthSvc,PollHandler,StreamHandler,VoteHandler app
+    class RedisCounts,RedisVoters,RedisPubSub redis
+    class MongoUsers,MongoPolls,MongoVotes mongo
+      </div>
+    </div>
+
+    <h2 style="font-size: 22px; font-weight: 600; margin-bottom: 16px;">⚡ Microsecond Vote Lifecycle (How a Vote Travels)</h2>
+    <div class="flow-grid">
+      <div class="flow-card">
+        <div class="flow-card-header">
+          <span class="step-num">1</span>
+          <span class="flow-title">Client Submits Vote</span>
+        </div>
+        <p class="flow-desc">Voter clicks option and fires <span class="flow-code">POST /api/polls/:id/vote</span> with fingerprint token. Zero page refresh.</p>
+      </div>
+
+      <div class="flow-card">
+        <div class="flow-card-header">
+          <span class="step-num">2</span>
+          <span class="flow-title">O(1) Deduplication</span>
+        </div>
+        <p class="flow-desc">Go handler runs <span class="flow-code">SADD poll:{id}:voters {token}</span>. If returns 0, duplicate is rejected immediately without DB overhead.</p>
+      </div>
+
+      <div class="flow-card">
+        <div class="flow-card-header">
+          <span class="step-num">3</span>
+          <span class="flow-title">Atomic Memory Tally</span>
+        </div>
+        <p class="flow-desc">Redis executes <span class="flow-code">HINCRBY poll:{id}:counts {optionId} 1</span> in single-digit microseconds with zero row-locking deadlocks.</p>
+      </div>
+
+      <div class="flow-card">
+        <div class="flow-card-header">
+          <span class="step-num">4</span>
+          <span class="flow-title">Pub/Sub Broadcasting</span>
+        </div>
+        <p class="flow-desc">Tally snapshot published to Redis channel <span class="flow-code">poll:{id}:events</span>, immediately received by all subscribed backend instances.</p>
+      </div>
+
+      <div class="flow-card">
+        <div class="flow-card-header">
+          <span class="step-num">5</span>
+          <span class="flow-title">SSE Event Stream</span>
+        </div>
+        <p class="flow-desc">Active viewer streams receive <span class="flow-code">text/event-stream</span> JSON payloads over HTTP/2. React animates results live.</p>
+      </div>
+
+      <div class="flow-card">
+        <div class="flow-card-header">
+          <span class="step-num">6</span>
+          <span class="flow-title">Async Audit Persistence</span>
+        </div>
+        <p class="flow-desc">An immutable audit record is asynchronously written to MongoDB Atlas <span class="flow-code">votes</span> collection for durable storage.</p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: 'neutral',
+      flowchart: { curve: 'basis', useMaxWidth: true }
+    });
+  </script>
+</body>
+</html>

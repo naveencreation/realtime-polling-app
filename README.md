@@ -21,40 +21,87 @@
 
 ## 🏛️ System Architecture
 
-```
-                                 [ Browser Clients / Voters ]
-                                     /                   \
-                                    /                     \  REST API & SSE Stream
-                           HTTPS   /                       \  (Credentials + Bearer)
-                                  v                         v
-                       +----------------------+    +--------------------------+
-                       |     Vercel Edge      |    |   AWS EC2 (Ubuntu 24)    |
-                       |  polling.naveenselvan|    |  polling-api.naveenselvan|
-                       |         .me          |    +--------------------------+
-                       +----------------------+                 |
-                                                                | (Port 80/443 SSL)
-                                                                v
-                                                   +--------------------------+
-                                                   |       Caddy Server       |
-                                                   |  (Auto Let's Encrypt TLS)|
-                                                   +--------------------------+
-                                                                |
-                                                                | Reverse Proxy (8080)
-                                                                v
-                                                   +--------------------------+
-                                                   |     Go / Gin Service     |
-                                                   |    (Containerized App)   |
-                                                   +--------------------------+
-                                                              /        \
-                                            Sub-millisecond  /          \  Durable Writes &
-                                            Atomic Counting /            \ Audit Logging
-                                                           v              v
-                                                 +---------------+   +-------------------+
-                                                 | Redis 7 Alpine|   |   MongoDB Atlas   |
-                                                 | (In-Memory    |   |  (M0 Cloud Replica|
-                                                 |  Pub/Sub +    |   |   Set Database)   |
-                                                 |  Deduplication|   +-------------------+
-                                                 +---------------+
+```mermaid
+flowchart TD
+    subgraph Clients ["👥 Client Tier (Browsers & Voters)"]
+        Creator["👨‍💻 Creator<br/>(Dashboard & Poll Manager)"]
+        Voters["📱 Audience Voters<br/>(Anonymous Mobile & Desktop)"]
+    end
+
+    subgraph FrontendTier ["🌐 Frontend Tier (Vercel Global Edge CDN)"]
+        VercelApp["⚡ React 19 + TypeScript + Vite<br/><code>polling.naveenselvan.me</code>"]
+        EventSourceClient["📡 Native EventSource Client<br/>(Auto Reconnect with Exponential Backoff)"]
+    end
+
+    subgraph IngressTier ["🛡️ Ingress & Security Tier (AWS EC2 AP-South-1)"]
+        Caddy["🔒 Caddy Web Server 2<br/><code>polling-api.naveenselvan.me</code><br/>• Auto Let's Encrypt TLS (HTTPS / HTTP/2)<br/>• Unbuffered SSE: X-Accel-Buffering: no"]
+    end
+
+    subgraph BackendTier ["⚙️ Application Tier (Go 1.24 + Gin Framework)"]
+        Router["Gin Engine & Middleware<br/>(CORS, Recovery, RequestLogger)"]
+        AuthSvc["🔐 Auth Service<br/>(JWT v5 + BCrypt Cost 11)"]
+        PollHandler["📋 Poll Lifecycle Manager<br/>(Server Validation & Rule B Constraint)"]
+        StreamHandler["📡 SSE Stream Handler<br/>(Flushes :connected & streams JSON)"]
+        VoteHandler["🗳️ Vote Processing Engine<br/>(Microsecond In-Memory Pipeline)"]
+    end
+
+    subgraph DataTier ["💾 Hybrid Real-Time & Persistence Tier"]
+        subgraph RedisBox ["⚡ Redis 7 (In-Memory Engine)"]
+            RedisCounts["📊 Atomic Tallies: HINCRBY<br/><code>poll:{id}:counts {opt} 1</code>"]
+            RedisVoters["🛡️ Voter Dedup: SADD O(1)<br/><code>poll:{id}:voters {voterToken}</code>"]
+            RedisPubSub["📢 Pub/Sub Broker<br/><code>poll:{id}:events</code> Channel"]
+        end
+
+        subgraph MongoBox ["🍃 MongoDB Atlas (Cloud Replica Set)"]
+            MongoUsers["users Collection<br/>(Credentials & Password Hashes)"]
+            MongoPolls["polls Collection<br/>(Questions, Options, Deadlines)"]
+            MongoVotes["votes Collection<br/>(Asynchronous Audit Event Stream)"]
+        end
+    end
+
+    %% Client Interactions
+    Creator -->|HTTPS Browse & Manage| VercelApp
+    Voters -->|HTTPS Vote & View| VercelApp
+    VercelApp --> EventSourceClient
+
+    %% Frontend to API
+    Creator -.->|REST API /api/polls| Caddy
+    Voters -.->|POST /api/polls/:id/vote| Caddy
+    EventSourceClient ==>|SSE GET /api/polls/:id/stream| Caddy
+
+    %% Caddy to Backend
+    Caddy -->|Reverse Proxy :8080| Router
+    Router --> AuthSvc
+    Router --> PollHandler
+    Router --> VoteHandler
+    Router --> StreamHandler
+
+    %% Backend to Data Tier
+    AuthSvc <-->|Read / Write Users| MongoUsers
+    PollHandler <-->|CRUD Polls & Enforce Rule B| MongoPolls
+    PollHandler -.->|Initialize Counts| RedisCounts
+
+    VoteHandler ==>|1. Check & Add Voter Token| RedisVoters
+    VoteHandler ==>|2. Atomic Increment Count| RedisCounts
+    VoteHandler ==>|3. Publish New Snapshot| RedisPubSub
+    VoteHandler -.->|4. Async Audit Trail Write| MongoVotes
+
+    RedisPubSub ==>|Subscribed Event Notification| StreamHandler
+    StreamHandler ==>|Real-Time Server-Sent Events| Caddy
+
+    classDef client fill:#fbf9f5,stroke:#d8d1c5,stroke-width:2px,color:#171717
+    classDef edge fill:#f3f0e6,stroke:#e85d2a,stroke-width:2px,color:#171717
+    classDef proxy fill:#eef5ef,stroke:#2f7d5a,stroke-width:2px,color:#171717
+    classDef app fill:#e8f4fd,stroke:#2b6cb0,stroke-width:2px,color:#171717
+    classDef redis fill:#fff2f0,stroke:#b63b34,stroke-width:2px,color:#171717
+    classDef mongo fill:#f0fbf4,stroke:#258a57,stroke-width:2px,color:#171717
+
+    class Creator,Voters client
+    class VercelApp,EventSourceClient edge
+    class Caddy proxy
+    class Router,AuthSvc,PollHandler,StreamHandler,VoteHandler app
+    class RedisCounts,RedisVoters,RedisPubSub redis
+    class MongoUsers,MongoPolls,MongoVotes mongo
 ```
 
 ---
