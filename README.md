@@ -23,85 +23,100 @@
 
 ```mermaid
 flowchart TD
-    subgraph Clients ["👥 Client Tier (Browsers & Voters)"]
-        Creator["👨‍💻 Creator<br/>(Dashboard & Poll Manager)"]
-        Voters["📱 Audience Voters<br/>(Anonymous Mobile & Desktop)"]
-    end
 
-    subgraph FrontendTier ["🌐 Frontend Tier (Vercel Global Edge CDN)"]
-        VercelApp["⚡ React 19 + TypeScript + Vite<br/><code>polling.naveenselvan.me</code>"]
-        EventSourceClient["📡 Native EventSource Client<br/>(Auto Reconnect with Exponential Backoff)"]
-    end
+subgraph group_web["Web application"]
+  node_app["Route application<br/>[App.tsx]"]
+  node_authpage["Sign-in pages<br/>[AuthPage.tsx]"]
+  node_dashboard["Poll dashboard<br/>[DashboardPage.tsx]"]
+  node_create["Poll creation<br/>[CreatePage.tsx]"]
+  node_pollpage["Poll view<br/>[PollPage.tsx]"]
+  node_pollhook["Live poll state<br/>[usePoll.ts]"]
+  node_api_client["API client<br/>[api.ts]"]
+end
 
-    subgraph IngressTier ["🛡️ Ingress & Security Tier (AWS EC2 AP-South-1)"]
-        Caddy["🔒 Caddy Web Server 2<br/><code>polling-api.naveenselvan.me</code><br/>• Auto Let's Encrypt TLS (HTTPS / HTTP/2)<br/>• Unbuffered SSE: X-Accel-Buffering: no"]
-    end
+subgraph group_api["HTTP application"]
+  node_router["HTTP router<br/>[main.go]"]
+end
 
-    subgraph BackendTier ["⚙️ Application Tier (Go 1.24 + Gin Framework)"]
-        Router["Gin Engine & Middleware<br/>(CORS, Recovery, RequestLogger)"]
-        AuthSvc["🔐 Auth Service<br/>(JWT v5 + BCrypt Cost 11)"]
-        PollHandler["📋 Poll Lifecycle Manager<br/>(Server Validation & Rule B Constraint)"]
-        StreamHandler["📡 SSE Stream Handler<br/>(Flushes :connected & streams JSON)"]
-        VoteHandler["🗳️ Vote Processing Engine<br/>(Microsecond In-Memory Pipeline)"]
-    end
+subgraph group_domain["Poll and identity"]
+  node_auth_handler["Auth endpoints<br/>[handler.go]"]
+  node_auth_service["Auth service<br/>[service.go]"]
+  node_auth_repo["User repository<br/>[repository.go]"]
+  node_poll_handler["Poll lifecycle<br/>[handler.go]"]
+  node_poll_repo["Poll repository<br/>[repository.go]"]
+  node_vote_handler["Vote processing<br/>[handler.go]"]
+  node_vote_service["Live vote service<br/>[service.go]"]
+  node_stream_handler["SSE stream<br/>[handler.go]"]
+end
 
-    subgraph DataTier ["💾 Hybrid Real-Time & Persistence Tier"]
-        subgraph RedisBox ["⚡ Redis 7 (In-Memory Engine)"]
-            RedisCounts["📊 Atomic Tallies: HINCRBY<br/><code>poll:{id}:counts {opt} 1</code>"]
-            RedisVoters["🛡️ Voter Dedup: SADD O(1)<br/><code>poll:{id}:voters {voterToken}</code>"]
-            RedisPubSub["📢 Pub/Sub Broker<br/><code>poll:{id}:events</code> Channel"]
-        end
+subgraph group_state["Persistence and events"]
+  node_mongo[("MongoDB")]
+  node_redis[("Redis")]
+end
 
-        subgraph MongoBox ["🍃 MongoDB Atlas (Cloud Replica Set)"]
-            MongoUsers["users Collection<br/>(Credentials & Password Hashes)"]
-            MongoPolls["polls Collection<br/>(Questions, Options, Deadlines)"]
-            MongoVotes["votes Collection<br/>(Asynchronous Audit Event Stream)"]
-        end
-    end
+node_creator(("Poll creator"))
+node_voter(("Poll voter"))
 
-    %% Client Interactions
-    Creator -->|HTTPS Browse & Manage| VercelApp
-    Voters -->|HTTPS Vote & View| VercelApp
-    VercelApp --> EventSourceClient
+node_creator -->|"uses"| node_app
+node_voter -->|"uses"| node_app
+node_app -->|"routes"| node_authpage
+node_app -->|"routes"| node_dashboard
+node_app -->|"routes"| node_create
+node_app -->|"routes"| node_pollpage
+node_authpage -->|"requests"| node_api_client
+node_dashboard -->|"requests"| node_api_client
+node_create -->|"requests"| node_api_client
+node_pollpage -->|"uses"| node_pollhook
+node_pollhook -->|"loads poll"| node_api_client
+node_pollhook -->|"opens SSE"| node_stream_handler
+node_api_client -->|"HTTP requests"| node_router
+node_router -->|"dispatches auth"| node_auth_handler
+node_router -->|"dispatches polls"| node_poll_handler
+node_router -->|"dispatches votes"| node_vote_handler
+node_router -->|"dispatches SSE"| node_stream_handler
+node_auth_handler -->|"hashes tokens"| node_auth_service
+node_auth_handler -->|"reads writes users"| node_auth_repo
+node_auth_repo -->|"persists users"| node_mongo
+node_poll_handler -->|"manages polls"| node_poll_repo
+node_poll_handler -->|"reads tallies"| node_vote_service
+node_poll_handler -->|"writes vote audits"| node_mongo
+node_poll_repo -->|"persists polls"| node_mongo
+node_vote_handler -->|"checks poll"| node_poll_repo
+node_vote_handler -->|"registers vote"| node_vote_service
+node_vote_handler -->|"writes audit"| node_mongo
+node_vote_service -->|"tallies dedup publishes"| node_redis
+node_stream_handler -->|"checks poll"| node_poll_repo
+node_stream_handler -->|"subscribes updates"| node_redis
 
-    %% Frontend to API
-    Creator -.->|REST API /api/polls| Caddy
-    Voters -.->|POST /api/polls/:id/vote| Caddy
-    EventSourceClient ==>|SSE GET /api/polls/:id/stream| Caddy
+click node_app "https://github.com/naveencreation/realtime-polling-app/blob/main/frontend/src/App.tsx"
+click node_authpage "https://github.com/naveencreation/realtime-polling-app/blob/main/frontend/src/pages/AuthPage.tsx"
+click node_dashboard "https://github.com/naveencreation/realtime-polling-app/blob/main/frontend/src/pages/DashboardPage.tsx"
+click node_create "https://github.com/naveencreation/realtime-polling-app/blob/main/frontend/src/pages/CreatePage.tsx"
+click node_pollpage "https://github.com/naveencreation/realtime-polling-app/blob/main/frontend/src/pages/PollPage.tsx"
+click node_pollhook "https://github.com/naveencreation/realtime-polling-app/blob/main/frontend/src/lib/usePoll.ts"
+click node_api_client "https://github.com/naveencreation/realtime-polling-app/blob/main/frontend/src/lib/api.ts"
+click node_router "https://github.com/naveencreation/realtime-polling-app/blob/main/backend/cmd/main.go"
+click node_auth_handler "https://github.com/naveencreation/realtime-polling-app/blob/main/backend/internal/auth/handler.go"
+click node_auth_service "https://github.com/naveencreation/realtime-polling-app/blob/main/backend/internal/auth/service.go"
+click node_auth_repo "https://github.com/naveencreation/realtime-polling-app/blob/main/backend/internal/auth/repository.go"
+click node_poll_handler "https://github.com/naveencreation/realtime-polling-app/blob/main/backend/internal/poll/handler.go"
+click node_poll_repo "https://github.com/naveencreation/realtime-polling-app/blob/main/backend/internal/poll/repository.go"
+click node_vote_handler "https://github.com/naveencreation/realtime-polling-app/blob/main/backend/internal/vote/handler.go"
+click node_vote_service "https://github.com/naveencreation/realtime-polling-app/blob/main/backend/internal/vote/service.go"
+click node_stream_handler "https://github.com/naveencreation/realtime-polling-app/blob/main/backend/internal/realtime/handler.go"
 
-    %% Caddy to Backend
-    Caddy -->|Reverse Proxy :8080| Router
-    Router --> AuthSvc
-    Router --> PollHandler
-    Router --> VoteHandler
-    Router --> StreamHandler
-
-    %% Backend to Data Tier
-    AuthSvc <-->|Read / Write Users| MongoUsers
-    PollHandler <-->|CRUD Polls & Enforce Rule B| MongoPolls
-    PollHandler -.->|Initialize Counts| RedisCounts
-
-    VoteHandler ==>|1. Check & Add Voter Token| RedisVoters
-    VoteHandler ==>|2. Atomic Increment Count| RedisCounts
-    VoteHandler ==>|3. Publish New Snapshot| RedisPubSub
-    VoteHandler -.->|4. Async Audit Trail Write| MongoVotes
-
-    RedisPubSub ==>|Subscribed Event Notification| StreamHandler
-    StreamHandler ==>|Real-Time Server-Sent Events| Caddy
-
-    classDef client fill:#fbf9f5,stroke:#d8d1c5,stroke-width:2px,color:#171717
-    classDef edge fill:#f3f0e6,stroke:#e85d2a,stroke-width:2px,color:#171717
-    classDef proxy fill:#eef5ef,stroke:#2f7d5a,stroke-width:2px,color:#171717
-    classDef app fill:#e8f4fd,stroke:#2b6cb0,stroke-width:2px,color:#171717
-    classDef redis fill:#fff2f0,stroke:#b63b34,stroke-width:2px,color:#171717
-    classDef mongo fill:#f0fbf4,stroke:#258a57,stroke-width:2px,color:#171717
-
-    class Creator,Voters client
-    class VercelApp,EventSourceClient edge
-    class Caddy proxy
-    class Router,AuthSvc,PollHandler,StreamHandler,VoteHandler app
-    class RedisCounts,RedisVoters,RedisPubSub redis
-    class MongoUsers,MongoPolls,MongoVotes mongo
+classDef toneNeutral fill:#f8fafc,stroke:#334155,stroke-width:1.5px,color:#0f172a
+classDef toneBlue fill:#dbeafe,stroke:#2563eb,stroke-width:1.5px,color:#172554
+classDef toneAmber fill:#fef3c7,stroke:#d97706,stroke-width:1.5px,color:#78350f
+classDef toneMint fill:#dcfce7,stroke:#16a34a,stroke-width:1.5px,color:#14532d
+classDef toneRose fill:#ffe4e6,stroke:#e11d48,stroke-width:1.5px,color:#881337
+classDef toneIndigo fill:#e0e7ff,stroke:#4f46e5,stroke-width:1.5px,color:#312e81
+classDef toneTeal fill:#ccfbf1,stroke:#0f766e,stroke-width:1.5px,color:#134e4a
+class node_app,node_authpage,node_dashboard,node_create,node_pollpage,node_pollhook,node_api_client toneBlue
+class node_router toneAmber
+class node_auth_handler,node_auth_service,node_auth_repo,node_poll_handler,node_poll_repo,node_vote_handler,node_vote_service,node_stream_handler toneMint
+class node_mongo,node_redis toneRose
+class node_creator,node_voter toneIndigo
 ```
 
 ---
