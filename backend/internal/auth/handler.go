@@ -1,112 +1,184 @@
 package auth
 
 import (
-	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
-	"go.mongodb.org/mongo-driver/bson/primitive"
+	"errors"
 	"net/http"
-	"polling-backend/internal/models"
-	"polling-backend/pkg/response"
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/gin-gonic/gin"
+	"go.mongodb.org/mongo-driver/bson/primitive"
+	"polling-backend/internal/middleware"
+	"polling-backend/internal/models"
+	"polling-backend/pkg/response"
 )
 
+var emailRegex = regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`)
+
+// Handler exposes authentication HTTP endpoints for user registration, session management, and logout.
 type Handler struct {
 	Repo       Repository
 	Service    Service
 	AuthCookie string
 	Secure     bool
 }
+
 type credentials struct {
 	Username string `json:"username"`
 	Email    string `json:"email"`
 	Password string `json:"password"`
 }
 
-func (h Handler) Signup(c *gin.Context) {
-	var in credentials
-	if c.ShouldBindJSON(&in) != nil {
-		response.Error(c, 400, "validation_error", "invalid request body")
+func (handler Handler) setAuthCookie(ginCtx *gin.Context, authToken string) {
+	sameSite := http.SameSiteLaxMode
+	if handler.Secure {
+		sameSite = http.SameSiteNoneMode
+	}
+	maxAgeSeconds := int(handler.Service.Expiry.Seconds())
+	http.SetCookie(ginCtx.Writer, &http.Cookie{
+		Name:     handler.AuthCookie,
+		Value:    authToken,
+		MaxAge:   maxAgeSeconds,
+		HttpOnly: true,
+		Secure:   handler.Secure,
+		SameSite: sameSite,
+		Path:     "/",
+	})
+}
+
+// Signup handles POST /api/auth/signup. Validates input credentials, hashes the password,
+// creates the user record, and issues an HTTP-only auth cookie and JSON response.
+func (handler Handler) Signup(ginCtx *gin.Context) {
+	logger := middleware.GetLogger(ginCtx)
+
+	var req credentials
+	if err := ginCtx.ShouldBindJSON(&req); err != nil {
+		response.Error(ginCtx, http.StatusBadRequest, "validation_error", "invalid request body")
 		return
 	}
-	in.Username, in.Email = strings.TrimSpace(in.Username), strings.TrimSpace(strings.ToLower(in.Email))
-	if in.Username == "" || in.Email == "" || in.Password == "" {
-		response.Error(c, 400, "validation_error", "username, email and password are required")
+
+	req.Username = strings.TrimSpace(req.Username)
+	req.Email = strings.TrimSpace(strings.ToLower(req.Email))
+
+	if req.Username == "" || req.Email == "" || req.Password == "" {
+		response.Error(ginCtx, http.StatusBadRequest, "validation_error", "username, email and password are required")
 		return
 	}
-	if !regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`).MatchString(in.Email) {
-		response.Error(c, 400, "validation_error", "invalid email format")
+	if !emailRegex.MatchString(req.Email) {
+		response.Error(ginCtx, http.StatusBadRequest, "validation_error", "invalid email format")
 		return
 	}
-	if len([]rune(in.Password)) < 8 {
-		response.Error(c, 400, "validation_error", "password must be at least 8 characters")
+	if len([]rune(req.Password)) < 8 {
+		response.Error(ginCtx, http.StatusBadRequest, "validation_error", "password must be at least 8 characters")
 		return
 	}
-	u, err := h.Repo.FindByEmailOrUsername(c, in.Email, in.Username)
+
+	existingUser, err := handler.Repo.FindByEmailOrUsername(ginCtx, req.Email, req.Username)
 	if err != nil {
-		response.Error(c, 500, "server_error", "something went wrong")
+		logger.Error("database error looking up existing user", "email", req.Email, "error", err)
+		response.Error(ginCtx, http.StatusInternalServerError, "server_error", "something went wrong")
 		return
 	}
-	if u != nil {
-		response.Error(c, 409, "conflict", "username or email already in use")
+	if existingUser != nil {
+		response.Error(ginCtx, http.StatusConflict, "conflict", "username or email already in use")
 		return
 	}
-	hash, err := h.Service.HashPassword(in.Password)
+
+	passwordHash, err := handler.Service.HashPassword(req.Password)
 	if err != nil {
-		response.Error(c, 500, "server_error", "something went wrong")
+		logger.Error("bcrypt error hashing password", "error", err)
+		response.Error(ginCtx, http.StatusInternalServerError, "server_error", "something went wrong")
 		return
 	}
-	u = &models.User{ID: primitive.NewObjectID(), Username: in.Username, Email: in.Email, PasswordHash: hash, CreatedAt: time.Now().UTC()}
-	if err = h.Repo.Create(c, u); err != nil {
-		if err == ErrDuplicateUser {
-			response.Error(c, 409, "conflict", "username or email already in use")
+
+	newUser := &models.User{
+		ID:           primitive.NewObjectID(),
+		Username:     req.Username,
+		Email:        req.Email,
+		PasswordHash: passwordHash,
+		CreatedAt:    time.Now().UTC(),
+	}
+
+	if err = handler.Repo.Create(ginCtx, newUser); err != nil {
+		if errors.Is(err, ErrDuplicateUser) {
+			response.Error(ginCtx, http.StatusConflict, "conflict", "username or email already in use")
 		} else {
-			response.Error(c, 500, "server_error", "something went wrong")
+			logger.Error("database error creating user", "user_id", newUser.ID.Hex(), "error", err)
+			response.Error(ginCtx, http.StatusInternalServerError, "server_error", "something went wrong")
 		}
 		return
 	}
-	token, _ := h.Service.GenerateToken(u.ID.Hex(), u.Username)
-	sameSite := http.SameSiteLaxMode
-	if h.Secure {
-		sameSite = http.SameSiteNoneMode
-	}
-	if token != "" {
-		maxAge := int(h.Service.Expiry.Seconds())
-		http.SetCookie(c.Writer, &http.Cookie{Name: h.AuthCookie, Value: token, MaxAge: maxAge, HttpOnly: true, Secure: h.Secure, SameSite: sameSite, Path: "/"})
-	}
-	response.JSON(c, 201, gin.H{"id": u.ID.Hex(), "username": u.Username, "token": token})
-}
-func (h Handler) Login(c *gin.Context) {
-	var in credentials
-	if c.ShouldBindJSON(&in) != nil || strings.TrimSpace(in.Email) == "" || in.Password == "" {
-		response.Error(c, 400, "validation_error", "email and password are required")
-		return
-	}
-	u, err := h.Repo.FindByEmail(c, strings.ToLower(strings.TrimSpace(in.Email)))
-	if err != nil || u == nil || !h.Service.ComparePassword(u.PasswordHash, in.Password) {
-		response.Error(c, 401, "unauthorized", "invalid email or password")
-		return
-	}
-	token, err := h.Service.GenerateToken(u.ID.Hex(), u.Username)
+
+	authToken, err := handler.Service.GenerateToken(newUser.ID.Hex(), newUser.Username)
 	if err != nil {
-		response.Error(c, 500, "server_error", "something went wrong")
+		logger.Error("jwt error generating auth token", "user_id", newUser.ID.Hex(), "error", err)
+		response.Error(ginCtx, http.StatusInternalServerError, "server_error", "failed to generate authentication token")
 		return
 	}
-	maxAge := int(h.Service.Expiry.Seconds())
+
+	if authToken != "" {
+		handler.setAuthCookie(ginCtx, authToken)
+	}
+
+	response.JSON(ginCtx, http.StatusCreated, gin.H{
+		"id":       newUser.ID.Hex(),
+		"username": newUser.Username,
+		"token":    authToken,
+	})
+}
+
+// Login handles POST /api/auth/login. Authenticates email and password, returning a signed JWT.
+func (handler Handler) Login(ginCtx *gin.Context) {
+	logger := middleware.GetLogger(ginCtx)
+
+	var req credentials
+	if err := ginCtx.ShouldBindJSON(&req); err != nil || strings.TrimSpace(req.Email) == "" || req.Password == "" {
+		response.Error(ginCtx, http.StatusBadRequest, "validation_error", "email and password are required")
+		return
+	}
+
+	user, err := handler.Repo.FindByEmail(ginCtx, strings.ToLower(strings.TrimSpace(req.Email)))
+	if err != nil {
+		logger.Error("database error looking up user during login", "email", req.Email, "error", err)
+		response.Error(ginCtx, http.StatusInternalServerError, "server_error", "something went wrong")
+		return
+	}
+	if user == nil || !handler.Service.ComparePassword(user.PasswordHash, req.Password) {
+		response.Error(ginCtx, http.StatusUnauthorized, "unauthorized", "invalid email or password")
+		return
+	}
+
+	authToken, err := handler.Service.GenerateToken(user.ID.Hex(), user.Username)
+	if err != nil {
+		logger.Error("jwt error generating token during login", "user_id", user.ID.Hex(), "error", err)
+		response.Error(ginCtx, http.StatusInternalServerError, "server_error", "something went wrong")
+		return
+	}
+
+	handler.setAuthCookie(ginCtx, authToken)
+	response.JSON(ginCtx, http.StatusOK, gin.H{
+		"id":       user.ID.Hex(),
+		"username": user.Username,
+		"token":    authToken,
+	})
+}
+
+// Logout handles POST /api/auth/logout. Clears the authentication session cookie.
+func (handler Handler) Logout(ginCtx *gin.Context) {
 	sameSite := http.SameSiteLaxMode
-	if h.Secure {
+	if handler.Secure {
 		sameSite = http.SameSiteNoneMode
 	}
-	http.SetCookie(c.Writer, &http.Cookie{Name: h.AuthCookie, Value: token, MaxAge: maxAge, HttpOnly: true, Secure: h.Secure, SameSite: sameSite, Path: "/"})
-	response.JSON(c, 200, gin.H{"id": u.ID.Hex(), "username": u.Username, "token": token})
+	http.SetCookie(ginCtx.Writer, &http.Cookie{
+		Name:     handler.AuthCookie,
+		Value:    "",
+		MaxAge:   -1,
+		Expires:  time.Unix(1, 0),
+		HttpOnly: true,
+		Secure:   handler.Secure,
+		SameSite: sameSite,
+		Path:     "/",
+	})
+	ginCtx.Status(http.StatusOK)
 }
-func (h Handler) Logout(c *gin.Context) {
-	sameSite := http.SameSiteLaxMode
-	if h.Secure {
-		sameSite = http.SameSiteNoneMode
-	}
-	http.SetCookie(c.Writer, &http.Cookie{Name: h.AuthCookie, MaxAge: -1, Expires: time.Unix(1, 0), HttpOnly: true, Secure: h.Secure, SameSite: sameSite, Path: "/"})
-	c.Status(200)
-}
-func NewVoterToken() string { return uuid.NewString() }

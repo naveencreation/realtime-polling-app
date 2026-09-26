@@ -3,31 +3,46 @@ package auth
 import (
 	"context"
 	"errors"
+
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"polling-backend/internal/models"
 )
 
-type Repository struct{ Users *mongo.Collection }
+// Repository manages MongoDB persistence for user account documents.
+type Repository struct {
+	Users *mongo.Collection
+}
 
-func (r Repository) FindByEmailOrUsername(ctx context.Context, email, username string) (*models.User, error) {
-	var u models.User
-	err := r.Users.FindOne(ctx, bson.M{"$or": []bson.M{{"email": email}, {"username": username}}}).Decode(&u)
+// FindByEmailOrUsername looks up a user by either email or username to detect collisions.
+func (repo Repository) FindByEmailOrUsername(ctx context.Context, email, username string) (*models.User, error) {
+	var user models.User
+	filter := bson.M{
+		"$or": []bson.M{
+			{"email": email},
+			{"username": username},
+		},
+	}
+	err := repo.Users.FindOne(ctx, filter).Decode(&user)
 	if errors.Is(err, mongo.ErrNoDocuments) {
 		return nil, nil
 	}
-	return &u, err
+	return &user, err
 }
-func (r Repository) FindByEmail(ctx context.Context, email string) (*models.User, error) {
-	var u models.User
-	err := r.Users.FindOne(ctx, bson.M{"email": email}).Decode(&u)
+
+// FindByEmail retrieves a user by exact email match. Returns (nil, nil) if no user exists.
+func (repo Repository) FindByEmail(ctx context.Context, email string) (*models.User, error) {
+	var user models.User
+	err := repo.Users.FindOne(ctx, bson.M{"email": email}).Decode(&user)
 	if errors.Is(err, mongo.ErrNoDocuments) {
 		return nil, nil
 	}
-	return &u, err
+	return &user, err
 }
-func (r Repository) Create(ctx context.Context, u *models.User) error {
-	_, err := r.Users.InsertOne(ctx, u)
+
+// Create inserts a new user record. Returns ErrDuplicateUser if email or username violates uniqueness.
+func (repo Repository) Create(ctx context.Context, user *models.User) error {
+	_, err := repo.Users.InsertOne(ctx, user)
 	if mongo.IsDuplicateKeyError(err) {
 		return ErrDuplicateUser
 	}

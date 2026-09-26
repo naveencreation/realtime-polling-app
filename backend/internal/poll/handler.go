@@ -2,209 +2,279 @@ package poll
 
 import (
 	"context"
-	"github.com/gin-gonic/gin"
-	"github.com/redis/go-redis/v9"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 	"net/http"
-	"polling-backend/internal/models"
-	"polling-backend/pkg/response"
+	"strconv"
 	"strings"
 	"time"
+
+	"github.com/gin-gonic/gin"
+	"go.mongodb.org/mongo-driver/bson/primitive"
+	"polling-backend/internal/middleware"
+	"polling-backend/internal/models"
+	"polling-backend/pkg/response"
 )
 
+// LiveService defines the voting operations required by the poll handler.
 type LiveService interface {
-	HasVoted(context.Context, string, string) (bool, error)
-	Counts(context.Context, string) (map[string]int, error)
-	PublishClosed(context.Context, string) error
+	HasVoted(ctx context.Context, pollID, voterToken string) (bool, error)
+	Counts(ctx context.Context, pollID string) (map[string]int, error)
+	PublishClosed(ctx context.Context, pollID string) error
 }
+
+// Handler coordinates poll creation, inspection, closure, and author listings.
 type Handler struct {
-	Repo                         Repository
-	Redis                        *redis.Client
-	VoteService                  LiveService
-	FrontendBaseURL, VoterCookie string
-	Secure                       bool
+	Repo            Repository
+	VoteService     LiveService
+	FrontendBaseURL string
+	VoterCookie     string
+	Secure          bool
 }
+
 type createInput struct {
 	Question  string   `json:"question"`
 	Options   []string `json:"options"`
 	ExpiresAt *string  `json:"expiresAt"`
 }
 
-func idFrom(c *gin.Context) (primitive.ObjectID, bool) {
-	id, err := primitive.ObjectIDFromHex(c.Param("id"))
-	return id, err == nil
+func parsePollID(ginCtx *gin.Context) (primitive.ObjectID, bool) {
+	pollID, err := primitive.ObjectIDFromHex(ginCtx.Param("id"))
+	return pollID, err == nil
 }
-func userID(c *gin.Context) (primitive.ObjectID, bool) {
-	raw, ok := c.Get("userId")
+
+func parseUserID(ginCtx *gin.Context) (primitive.ObjectID, bool) {
+	rawVal, ok := ginCtx.Get("userId")
 	if !ok {
 		return primitive.NilObjectID, false
 	}
-	id, err := primitive.ObjectIDFromHex(raw.(string))
-	return id, err == nil
-}
-func view(p *models.Poll, base string) gin.H {
-	opts := make([]gin.H, len(p.Options))
-	for i, o := range p.Options {
-		opts[i] = gin.H{"id": o.ID, "text": o.Text}
+	userIDStr, ok := rawVal.(string)
+	if !ok {
+		return primitive.NilObjectID, false
 	}
-	primaryBase := strings.TrimSpace(strings.Split(base, ",")[0])
+	userID, err := primitive.ObjectIDFromHex(userIDStr)
+	return userID, err == nil
+}
+
+func formatPollResponse(pollItem *models.Poll, frontendBaseURL string) gin.H {
+	formattedOptions := make([]gin.H, len(pollItem.Options))
+	for index, option := range pollItem.Options {
+		formattedOptions[index] = gin.H{"id": option.ID, "text": option.Text}
+	}
+
+	primaryBase := strings.TrimSpace(strings.Split(frontendBaseURL, ",")[0])
 	if primaryBase == "*" || primaryBase == "" {
-		primaryBase = "https://polling.naveenselvan.me"
+		primaryBase = "http://localhost:5173"
 	}
-	return gin.H{"id": p.ID.Hex(), "question": p.Question, "options": opts, "status": p.Status, "expiresAt": p.ExpiresAt, "createdAt": p.CreatedAt, "shareUrl": strings.TrimRight(primaryBase, "/") + "/poll/" + p.ID.Hex()}
+
+	return gin.H{
+		"id":        pollItem.ID.Hex(),
+		"question":  pollItem.Question,
+		"options":   formattedOptions,
+		"status":    pollItem.Status,
+		"expiresAt": pollItem.ExpiresAt,
+		"createdAt": pollItem.CreatedAt,
+		"shareUrl":  strings.TrimRight(primaryBase, "/") + "/poll/" + pollItem.ID.Hex(),
+	}
 }
-func (h Handler) Create(c *gin.Context) {
-	uid, ok := userID(c)
+
+// Create handles POST /api/polls. Validates question length and option constraints (2-6 unique options).
+func (handler Handler) Create(ginCtx *gin.Context) {
+	creatorID, ok := parseUserID(ginCtx)
 	if !ok {
-		response.Error(c, 401, "unauthorized", "authentication required")
+		response.Error(ginCtx, http.StatusUnauthorized, "unauthorized", "authentication required")
 		return
 	}
-	var in createInput
-	if c.ShouldBindJSON(&in) != nil {
-		response.Error(c, 400, "validation_error", "invalid request body")
+
+	var req createInput
+	if err := ginCtx.ShouldBindJSON(&req); err != nil {
+		response.Error(ginCtx, http.StatusBadRequest, "validation_error", "invalid request body")
 		return
 	}
-	in.Question = strings.TrimSpace(in.Question)
-	if in.Question == "" || len([]rune(in.Question)) > 200 {
-		response.Error(c, 400, "validation_error", "question is required and must be at most 200 characters")
+
+	req.Question = strings.TrimSpace(req.Question)
+	if req.Question == "" || len([]rune(req.Question)) > 200 {
+		response.Error(ginCtx, http.StatusBadRequest, "validation_error", "question is required and must be at most 200 characters")
 		return
 	}
-	if len(in.Options) < 2 {
-		response.Error(c, 400, "validation_error", "at least 2 options are required")
+
+	if len(req.Options) < 2 {
+		response.Error(ginCtx, http.StatusBadRequest, "validation_error", "at least 2 options are required")
 		return
 	}
-	if len(in.Options) > 6 {
-		response.Error(c, 400, "validation_error", "at most 6 options are allowed")
+	if len(req.Options) > 6 {
+		response.Error(ginCtx, http.StatusBadRequest, "validation_error", "at most 6 options are allowed")
 		return
 	}
-	seen := map[string]bool{}
-	opts := make([]models.Option, len(in.Options))
-	for i, v := range in.Options {
-		v = strings.TrimSpace(v)
-		if v == "" {
-			response.Error(c, 400, "validation_error", "options cannot be empty")
+
+	seenOptions := make(map[string]bool, len(req.Options))
+	pollOptions := make([]models.Option, len(req.Options))
+	for index, optionText := range req.Options {
+		optionText = strings.TrimSpace(optionText)
+		if optionText == "" {
+			response.Error(ginCtx, http.StatusBadRequest, "validation_error", "options cannot be empty")
 			return
 		}
-		k := strings.ToLower(v)
-		if seen[k] {
-			response.Error(c, 400, "validation_error", "options must be unique")
+		loweredKey := strings.ToLower(optionText)
+		if seenOptions[loweredKey] {
+			response.Error(ginCtx, http.StatusBadRequest, "validation_error", "options must be unique")
 			return
 		}
-		seen[k] = true
-		opts[i] = models.Option{ID: "opt_" + string(rune('1'+i)), Text: v}
+		seenOptions[loweredKey] = true
+		pollOptions[index] = models.Option{
+			ID:   "opt_" + strconv.Itoa(index+1),
+			Text: optionText,
+		}
 	}
-	var expiry *time.Time
-	if in.ExpiresAt != nil {
-		t, err := time.Parse(time.RFC3339, *in.ExpiresAt)
-		if err != nil || !t.After(time.Now()) {
-			response.Error(c, 400, "validation_error", "expiresAt must be a future ISO 8601 timestamp")
+
+	var expiryTime *time.Time
+	if req.ExpiresAt != nil {
+		parsedTime, err := time.Parse(time.RFC3339, *req.ExpiresAt)
+		if err != nil || !parsedTime.After(time.Now()) {
+			response.Error(ginCtx, http.StatusBadRequest, "validation_error", "expiresAt must be a future ISO 8601 timestamp")
 			return
 		}
-		expiry = &t
+		expiryTime = &parsedTime
 	}
-	p := &models.Poll{ID: primitive.NewObjectID(), CreatorID: uid, Question: in.Question, Options: opts, ExpiresAt: expiry}
-	if err := h.Repo.Create(c, p); err != nil {
-		response.Error(c, 500, "server_error", "something went wrong")
+
+	newPoll := &models.Poll{
+		ID:        primitive.NewObjectID(),
+		CreatorID: creatorID,
+		Question:  req.Question,
+		Options:   pollOptions,
+		ExpiresAt: expiryTime,
+	}
+
+	if err := handler.Repo.Create(ginCtx, newPoll); err != nil {
+		middleware.GetLogger(ginCtx).Error("database error creating poll", "error", err)
+		response.Error(ginCtx, http.StatusInternalServerError, "server_error", "something went wrong")
 		return
 	}
-	response.JSON(c, 201, view(p, h.FrontendBaseURL))
+
+	response.JSON(ginCtx, http.StatusCreated, formatPollResponse(newPoll, handler.FrontendBaseURL))
 }
-func (h Handler) Get(c *gin.Context) {
-	id, ok := idFrom(c)
+
+// Get handles GET /api/polls/:id. Resolves lazy expiry, checks voter status, and attaches live tallies.
+func (handler Handler) Get(ginCtx *gin.Context) {
+	pollID, ok := parsePollID(ginCtx)
 	if !ok {
-		response.Error(c, 404, "not_found", "poll not found")
+		response.Error(ginCtx, http.StatusNotFound, "not_found", "poll not found")
 		return
 	}
-	p, err := h.Repo.FindByID(c, id)
+
+	pollItem, err := handler.Repo.FindByID(ginCtx, pollID)
 	if err != nil {
-		response.Error(c, 500, "server_error", "something went wrong")
+		middleware.GetLogger(ginCtx).Error("database error finding poll", "poll_id", pollID.Hex(), "error", err)
+		response.Error(ginCtx, http.StatusInternalServerError, "server_error", "something went wrong")
 		return
 	}
-	if p == nil {
-		response.Error(c, 404, "not_found", "poll not found")
+	if pollItem == nil {
+		response.Error(ginCtx, http.StatusNotFound, "not_found", "poll not found")
 		return
 	}
-	if err = h.Repo.ResolveLazyExpiry(c, p); err != nil {
-		response.Error(c, 500, "server_error", "something went wrong")
+
+	if err = handler.Repo.ResolveLazyExpiry(ginCtx, pollItem); err != nil {
+		middleware.GetLogger(ginCtx).Error("database error resolving poll expiry", "poll_id", pollID.Hex(), "error", err)
+		response.Error(ginCtx, http.StatusInternalServerError, "server_error", "something went wrong")
 		return
 	}
-	token, _ := c.Cookie(h.VoterCookie)
-	if token == "" {
-		token = c.GetHeader("X-Voter-Token")
+
+	voterToken, _ := ginCtx.Cookie(handler.VoterCookie)
+	if voterToken == "" {
+		voterToken = ginCtx.GetHeader("X-Voter-Token")
 	}
-	has := false
-	if token != "" {
-		has, err = h.VoteService.HasVoted(c, p.ID.Hex(), token)
+
+	hasVoted := false
+	if voterToken != "" {
+		hasVoted, err = handler.VoteService.HasVoted(ginCtx, pollItem.ID.Hex(), voterToken)
 		if err != nil {
-			response.Error(c, 503, "dependency_unavailable", "live results are unavailable")
+			middleware.GetLogger(ginCtx).Error("redis error checking voter status", "poll_id", pollItem.ID.Hex(), "error", err)
+			response.Error(ginCtx, http.StatusServiceUnavailable, "dependency_unavailable", "live results are unavailable")
 			return
 		}
 	}
-	counts, err := h.VoteService.Counts(c, p.ID.Hex())
+
+	counts, err := handler.VoteService.Counts(ginCtx, pollItem.ID.Hex())
 	if err != nil {
-		response.Error(c, 503, "dependency_unavailable", "live results are unavailable")
+		middleware.GetLogger(ginCtx).Error("redis error fetching vote counts", "poll_id", pollItem.ID.Hex(), "error", err)
+		response.Error(ginCtx, http.StatusServiceUnavailable, "dependency_unavailable", "live results are unavailable")
 		return
 	}
-	v := view(p, h.FrontendBaseURL)
-	v["hasVoted"] = has
-	v["results"] = counts
-	response.JSON(c, 200, v)
+
+	responsePayload := formatPollResponse(pollItem, handler.FrontendBaseURL)
+	responsePayload["hasVoted"] = hasVoted
+	responsePayload["results"] = counts
+	response.JSON(ginCtx, http.StatusOK, responsePayload)
 }
-func (h Handler) Close(c *gin.Context) {
-	uid, ok := userID(c)
+
+// Close handles PATCH /api/polls/:id/close. Only the poll creator can close an active poll.
+func (handler Handler) Close(ginCtx *gin.Context) {
+	userID, ok := parseUserID(ginCtx)
 	if !ok {
-		response.Error(c, 401, "unauthorized", "authentication required")
+		response.Error(ginCtx, http.StatusUnauthorized, "unauthorized", "authentication required")
 		return
 	}
-	id, ok := idFrom(c)
+
+	pollID, ok := parsePollID(ginCtx)
 	if !ok {
-		response.Error(c, 404, "not_found", "poll not found")
+		response.Error(ginCtx, http.StatusNotFound, "not_found", "poll not found")
 		return
 	}
-	p, err := h.Repo.FindByID(c, id)
+
+	pollItem, err := handler.Repo.FindByID(ginCtx, pollID)
 	if err != nil {
-		response.Error(c, 500, "server_error", "something went wrong")
+		middleware.GetLogger(ginCtx).Error("database error finding poll to close", "poll_id", pollID.Hex(), "error", err)
+		response.Error(ginCtx, http.StatusInternalServerError, "server_error", "something went wrong")
 		return
 	}
-	if p == nil {
-		response.Error(c, 404, "not_found", "poll not found")
+	if pollItem == nil {
+		response.Error(ginCtx, http.StatusNotFound, "not_found", "poll not found")
 		return
 	}
-	if p.CreatorID != uid {
-		response.Error(c, 403, "forbidden", "not authorized to manage this poll")
+
+	if pollItem.CreatorID != userID {
+		response.Error(ginCtx, http.StatusForbidden, "forbidden", "not authorized to manage this poll")
 		return
 	}
-	if p.Status == models.StatusOpen {
-		if err = h.Repo.SetStatus(c, id, models.StatusClosed); err != nil {
-			response.Error(c, 500, "server_error", "something went wrong")
+
+	if pollItem.Status == models.StatusOpen {
+		if err = handler.Repo.SetStatus(ginCtx, pollID, models.StatusClosed); err != nil {
+			middleware.GetLogger(ginCtx).Error("database error closing poll", "poll_id", pollID.Hex(), "error", err)
+			response.Error(ginCtx, http.StatusInternalServerError, "server_error", "something went wrong")
 			return
 		}
-		if err = h.VoteService.PublishClosed(c, id.Hex()); err != nil {
-			response.Error(c, 503, "dependency_unavailable", "live results are unavailable")
+		if err = handler.VoteService.PublishClosed(ginCtx, pollID.Hex()); err != nil {
+			middleware.GetLogger(ginCtx).Error("redis error publishing poll closure", "poll_id", pollID.Hex(), "error", err)
+			response.Error(ginCtx, http.StatusServiceUnavailable, "dependency_unavailable", "live results are unavailable")
 			return
 		}
 	}
-	response.JSON(c, 200, gin.H{"id": id.Hex(), "status": models.StatusClosed})
+
+	response.JSON(ginCtx, http.StatusOK, gin.H{"id": pollID.Hex(), "status": models.StatusClosed})
 }
-func (h Handler) ListMine(c *gin.Context) {
-	uid, ok := userID(c)
+
+// ListMine handles GET /api/polls/mine. Returns all polls authored by the authenticated user.
+func (handler Handler) ListMine(ginCtx *gin.Context) {
+	creatorID, ok := parseUserID(ginCtx)
 	if !ok {
-		response.Error(c, 401, "unauthorized", "authentication required")
+		response.Error(ginCtx, http.StatusUnauthorized, "unauthorized", "authentication required")
 		return
 	}
-	ps, err := h.Repo.FindByCreator(c, uid)
+
+	polls, err := handler.Repo.FindByCreator(ginCtx, creatorID)
 	if err != nil {
-		response.Error(c, 500, "server_error", "something went wrong")
+		middleware.GetLogger(ginCtx).Error("database error listing user polls", "creator_id", creatorID.Hex(), "error", err)
+		response.Error(ginCtx, http.StatusInternalServerError, "server_error", "something went wrong")
 		return
 	}
-	out := make([]gin.H, 0, len(ps))
-	for i := range ps {
-		if err = h.Repo.ResolveLazyExpiry(c, &ps[i]); err != nil {
-			response.Error(c, 500, "server_error", "something went wrong")
+
+	pollViews := make([]gin.H, 0, len(polls))
+	for index := range polls {
+		if err = handler.Repo.ResolveLazyExpiry(ginCtx, &polls[index]); err != nil {
+			middleware.GetLogger(ginCtx).Error("database error resolving poll expiry in list", "poll_id", polls[index].ID.Hex(), "error", err)
+			response.Error(ginCtx, http.StatusInternalServerError, "server_error", "something went wrong")
 			return
 		}
-		out = append(out, view(&ps[i], h.FrontendBaseURL))
+		pollViews = append(pollViews, formatPollResponse(&polls[index], handler.FrontendBaseURL))
 	}
-	response.JSON(c, 200, out)
+
+	response.JSON(ginCtx, http.StatusOK, pollViews)
 }
-func (h Handler) Health(c *gin.Context) { c.Status(http.StatusOK) }

@@ -2,7 +2,15 @@ package response
 
 import "github.com/gin-gonic/gin"
 
-func Error(c *gin.Context, status int, code, message string) {
-	c.AbortWithStatusJSON(status, gin.H{"error": code, "message": message})
+// Error writes a standardized JSON error response and aborts the request.
+func Error(ginCtx *gin.Context, statusCode int, errorCode, message string) {
+	ginCtx.AbortWithStatusJSON(statusCode, gin.H{
+		"error":   errorCode,
+		"message": message,
+	})
 }
-func JSON(c *gin.Context, status int, value any) { c.JSON(status, value) }
+
+// JSON writes a standardized JSON success response.
+func JSON(ginCtx *gin.Context, statusCode int, payload any) {
+	ginCtx.JSON(statusCode, payload)
+}

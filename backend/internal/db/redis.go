@@ -2,14 +2,16 @@ package db
 
 import (
 	"context"
+
 	"github.com/redis/go-redis/v9"
 )
 
-func ConnectRedis(ctx context.Context, addr string) (*redis.Client, error) {
-	r := redis.NewClient(&redis.Options{Addr: addr})
-	if err := r.Ping(ctx).Err(); err != nil {
-		_ = r.Close()
+// ConnectRedis creates and verifies a Redis client connection.
+func ConnectRedis(ctx context.Context, address string) (*redis.Client, error) {
+	client := redis.NewClient(&redis.Options{Addr: address})
+	if err := client.Ping(ctx).Err(); err != nil {
+		_ = client.Close()
 		return nil, err
 	}
-	return r, nil
+	return client, nil
 }

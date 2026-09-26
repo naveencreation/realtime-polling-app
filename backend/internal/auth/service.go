@@ -2,47 +2,70 @@ package auth
 
 import (
 	"errors"
+	"time"
+
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
-	"time"
 )
 
-var ErrInvalidToken = errors.New("invalid token")
-var ErrInvalidCredentials = errors.New("invalid credentials")
-var ErrDuplicateUser = errors.New("duplicate user")
+var (
+	ErrInvalidToken       = errors.New("invalid token")
+	ErrInvalidCredentials = errors.New("invalid credentials")
+	ErrDuplicateUser      = errors.New("duplicate user")
+)
 
+// Service provides password hashing and JWT token issuance and validation.
 type Service struct {
 	Secret []byte
 	Expiry time.Duration
 	Cost   int
 }
+
 type claims struct {
 	UserID   string `json:"userId"`
 	Username string `json:"username"`
 	jwt.RegisteredClaims
 }
 
-func (s Service) HashPassword(v string) (string, error) {
-	b, err := bcrypt.GenerateFromPassword([]byte(v), s.Cost)
-	return string(b), err
+// HashPassword hashes a plaintext password using bcrypt at the configured cost.
+func (service Service) HashPassword(password string) (string, error) {
+	hashedBytes, err := bcrypt.GenerateFromPassword([]byte(password), service.Cost)
+	if err != nil {
+		return "", err
+	}
+	return string(hashedBytes), nil
 }
-func (s Service) ComparePassword(hash, plain string) bool {
-	return bcrypt.CompareHashAndPassword([]byte(hash), []byte(plain)) == nil
+
+// ComparePassword checks if a plaintext password matches a stored bcrypt hash.
+func (service Service) ComparePassword(passwordHash, password string) bool {
+	return bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(password)) == nil
 }
-func (s Service) GenerateToken(id, username string) (string, error) {
+
+// GenerateToken creates an HMAC-SHA256 signed JWT containing the user ID and username claims.
+func (service Service) GenerateToken(userID, username string) (string, error) {
 	now := time.Now()
-	return jwt.NewWithClaims(jwt.SigningMethodHS256, claims{UserID: id, Username: username, RegisteredClaims: jwt.RegisteredClaims{IssuedAt: jwt.NewNumericDate(now), ExpiresAt: jwt.NewNumericDate(now.Add(s.Expiry))}}).SignedString(s.Secret)
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims{
+		UserID:   userID,
+		Username: username,
+		RegisteredClaims: jwt.RegisteredClaims{
+			IssuedAt:  jwt.NewNumericDate(now),
+			ExpiresAt: jwt.NewNumericDate(now.Add(service.Expiry)),
+		},
+	})
+	return token.SignedString(service.Secret)
 }
-func (s Service) VerifyToken(raw string) (string, error) {
-	var c claims
-	t, err := jwt.ParseWithClaims(raw, &c, func(t *jwt.Token) (any, error) {
-		if t.Method != jwt.SigningMethodHS256 {
+
+// VerifyToken validates the JWT signature and expiration, returning the subject's userID.
+func (service Service) VerifyToken(tokenString string) (string, error) {
+	var tokenClaims claims
+	token, err := jwt.ParseWithClaims(tokenString, &tokenClaims, func(token *jwt.Token) (any, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, ErrInvalidToken
 		}
-		return s.Secret, nil
+		return service.Secret, nil
 	})
-	if err != nil || !t.Valid || c.UserID == "" {
+	if err != nil || !token.Valid || tokenClaims.UserID == "" {
 		return "", ErrInvalidToken
 	}
-	return c.UserID, nil
+	return tokenClaims.UserID, nil
 }
