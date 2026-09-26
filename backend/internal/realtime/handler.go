@@ -51,6 +51,11 @@ func (handler Handler) Stream(ginCtx *gin.Context) {
 	ginCtx.Status(http.StatusOK)
 
 	flusher, isFlusher := ginCtx.Writer.(http.Flusher)
+	ginCtx.Writer.WriteHeaderNow()
+	_, _ = fmt.Fprint(ginCtx.Writer, ": connected\n\n")
+	if isFlusher {
+		flusher.Flush()
+	}
 
 	// If the poll is already closed, send terminal event and complete the request
 	if pollItem.Status == models.StatusClosed {
